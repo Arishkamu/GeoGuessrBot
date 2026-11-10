@@ -1,8 +1,10 @@
 import os
 import psycopg
 from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
+from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, fields
+from dataclasses import fields
 
 from dotenv import load_dotenv
 
@@ -24,43 +26,41 @@ if not DATABASE_URL:
         "Создайте файл .env"
     )
 
-_global_conn: psycopg.Connection | None = None
+_pool: ConnectionPool | None = None
 
 
 def connect_db() -> None:
-    """Открывает соединение с БД. Вызывать при старте бота."""
-    global _global_conn
-    if _global_conn is None or _global_conn.closed:
-        _global_conn = psycopg.connect(DATABASE_URL)
-        print("Подключение к базе данных установлено.")
+    global _pool
+    if _pool is None or _pool.closed:
+        pool = ConnectionPool(
+            conninfo=DATABASE_URL,
+            min_size=2,
+            max_size=5,
+            open=False,
+        )
+        try:
+            pool.open(wait=True)
+        except Exception:
+            pool.close()
+            raise
+        _pool = pool
 
 
 def close_db() -> None:
-    """Закрывает соединение. Вызывать при выключении бота."""
-    global _global_conn
-    if _global_conn is not None and not _global_conn.closed:
-        _global_conn.close()
-        _global_conn = None
-        print("Подключение к базе данных закрыто.")
+    global _pool
+
+    if _pool is not None:
+        _pool.close()
+        _pool = None
 
 
 @contextmanager
-def get_db():
-    """
-    Использует глобальное соединение.
-    Делает commit при успехе и rollback при ошибке.
-    """
-    global _global_conn
-
-    if _global_conn is None or _global_conn.closed:
-        connect_db()
-
-    try:
-        yield _global_conn
-        _global_conn.commit()
-    except Exception:
-        _global_conn.rollback()
-        raise
+def get_db() -> Iterator[psycopg.Connection]:
+    pool = _pool
+    if pool is None:
+        raise RuntimeError("Пул соединений закрыт")
+    with pool.connection() as conn:
+        yield conn
 
 
 def dict_to_dataclass(data: dict, cls):
@@ -139,13 +139,13 @@ def init_db() -> None:
                     panorama_id    TEXT NOT NULL,
                     correct_lat    FLOAT NOT NULL,
                     correct_lon    FLOAT NOT NULL,
-                    
+
                     -- Данные для ответа игрока (заполняются позже)
                     guess_lat      FLOAT,
                     guess_lon      FLOAT,
                     distance_km    FLOAT,
                     points         INTEGER NOT NULL DEFAULT 0,
-                    
+
                     UNIQUE(game_id, round_number)
                 );
 
