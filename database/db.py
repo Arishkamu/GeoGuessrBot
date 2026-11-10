@@ -18,14 +18,6 @@ if not DATABASE_URL:
     )
 
 
-@dataclass
-class User:
-    user_id: int
-    tg_id: int
-    username: str
-    total_score: int
-
-
 def dict_to_dataclass(data: dict, cls):
     """Безопасно превращает словарь в датакласс, заполняя отсутствующие поля None."""
     if data is None:
@@ -40,6 +32,37 @@ def dict_to_dataclass(data: dict, cls):
             filtered_data[field_name] = None
 
     return cls(**filtered_data)
+
+def row_to_round(row: dict) -> game.Round | None:
+    """Собирает Round из плоского словаря БД."""
+    if row is None:
+        return None
+
+    correct_coords = game.Coordinates(
+        latitude=row['correct_lat'],
+        longitude=row['correct_lon']
+    )
+
+    guess = None
+    if row['guess_lat'] is not None:
+        guess_coords = game.Coordinates(
+            latitude=row['guess_lat'],
+            longitude=row['guess_lon']
+        )
+        guess = game.Guess(
+            coordinates=guess_coords,
+            distance_km=row['distance_km'],
+            score=row['points']
+        )
+
+    return game.Round(
+        round_id=row['round_id'],
+        game_id=row['game_id'],
+        round_number=row['round_number'],
+        panorama_id=row['panorama_id'],
+        correct_coordinates=correct_coords,
+        guess=guess
+    )
 
 
 @contextmanager
@@ -78,10 +101,20 @@ def init_db() -> None:
                 );
 
                 CREATE TABLE IF NOT EXISTS rounds (
-                    round_id     SERIAL PRIMARY KEY,
-                    game_id      INTEGER NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
-                    round_number INTEGER NOT NULL,
-                    points       INTEGER NOT NULL DEFAULT 0
+                    round_id       SERIAL PRIMARY KEY,
+                    game_id        INTEGER NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+                    round_number   INTEGER NOT NULL,
+                    panorama_id    TEXT NOT NULL,
+                    correct_lat    FLOAT NOT NULL,
+                    correct_lon    FLOAT NOT NULL,
+                    
+                    -- Данные для ответа игрока (заполняются позже)
+                    guess_lat      FLOAT,
+                    guess_lon      FLOAT,
+                    distance_km    FLOAT,
+                    points         INTEGER NOT NULL DEFAULT 0,
+                    
+                    UNIQUE(game_id, round_number)
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_games_user ON games(user_id);
@@ -102,7 +135,7 @@ def reset_db() -> None:
 
 # Основные 5 функций
 
-def get_or_create_user(tg_id: int, username: str | None = None) -> User | None:
+def get_or_create_user(tg_id: int, username: str | None = None) -> game.User | None:
     """Возвращает пользователя по tg_id, если он уже есть, или создаёт нового, если его нет."""
     with get_db() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
@@ -116,7 +149,7 @@ def get_or_create_user(tg_id: int, username: str | None = None) -> User | None:
                 (tg_id, username),
             )
             row = cur.fetchone()
-            return dict_to_dataclass(row, User)
+            return dict_to_dataclass(row, game.User)
 
 
 def create_game(user_id: int) -> game.Game | None:
@@ -135,50 +168,69 @@ def create_game(user_id: int) -> game.Game | None:
             row = cur.fetchone()
             return dict_to_dataclass(row, game.Game)
 
-
-def result_game() -> dict:
-    """
-    TODO
-    По завершении игры, заполняется полная информация о игровой сессии.
-    """
-    with get_db() as conn:
-        with conn.cursor(row_factory=dict_row) as cur:
-            cur.execute(
-                # TODO
-            )
-            return cur.fetchone()
-
-
-def save_round(
-        game_id: int,
-        round_number: int,
-        points: int,
+def create_round(
+    game_id: int,
+    round_number: int,
+    panorama_id: str,
+    correct_coordinates: game.Coordinates
 ) -> game.Round:
-    """Сохраняет завершенный раунд."""
+    """Создаёт незавершённый раунд с guess=None."""
     with get_db() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 """
-                INSERT INTO rounds
-                    (game_id, round_number, points)
-                VALUES (%s, %s, %s)
+                INSERT INTO rounds (game_id, round_number, panorama_id, correct_lat, correct_lon)
+                VALUES (%s, %s, %s, %s, %s)
                 RETURNING *
                 """,
-                (game_id, round_number, points),
+                (game_id, round_number, panorama_id, correct_coordinates.latitude, correct_coordinates.longitude),
             )
             row = cur.fetchone()
+    return row_to_round(row)
 
+def complete_round(
+    round_id: int,
+    guess: game.Guess
+) -> tuple[game.Round, game.Game]:
+    """Завершает раунд, обновляет счёт игры и при необходимости завершает игру."""
+    with get_db() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            # 1. Обновляем раунд (записываем ответ игрока)
+            cur.execute(
+                """
+                UPDATE rounds
+                SET guess_lat = %s, guess_lon = %s, distance_km = %s, points = %s
+                WHERE round_id = %s
+                RETURNING *
+                """,
+                (guess.coordinates.latitude, guess.coordinates.longitude, guess.distance_km, guess.score, round_id),
+            )
+            round_row = cur.fetchone()
+            game_id = round_row['game_id']
+            points = guess.score
+
+            # 2. Обновляем счёт игры и кол-во раундов
             cur.execute(
                 """
                 UPDATE games
-                SET rounds_total = rounds_total + 1,
-                    total_score = total_score + %s
+                SET total_score = total_score + %s,
+                    rounds_total = rounds_total + 1
                 WHERE game_id = %s
+                RETURNING *
                 """,
                 (points, game_id),
             )
+            game_row = cur.fetchone()
 
-            return dict_to_dataclass(row, game.Round)
+            # 3. Завершаем игру, если сыграно 5 раундов
+            if game_row['rounds_total'] >= 5:
+                cur.execute(
+                    "UPDATE games SET finished_at = NOW() WHERE game_id = %s RETURNING *",
+                    (game_id,),
+                )
+                game_row = cur.fetchone()
+
+    return row_to_round(round_row), dict_to_dataclass(game_row, game.Game)
 
 
 def get_rounds_by_game(game_id: int) -> list[game.Round]:
