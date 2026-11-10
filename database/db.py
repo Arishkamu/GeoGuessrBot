@@ -17,6 +17,44 @@ if not DATABASE_URL:
         "Создайте файл .env"
     )
 
+_global_conn: psycopg.Connection | None = None
+
+
+def connect_db() -> None:
+    """Открывает соединение с БД. Вызывать при старте бота."""
+    global _global_conn
+    if _global_conn is None or _global_conn.closed:
+        _global_conn = psycopg.connect(DATABASE_URL)
+        print("Подключение к базе данных установлено.")
+
+
+def close_db() -> None:
+    """Закрывает соединение. Вызывать при выключении бота."""
+    global _global_conn
+    if _global_conn is not None and not _global_conn.closed:
+        _global_conn.close()
+        _global_conn = None
+        print("Подключение к базе данных закрыто.")
+
+
+@contextmanager
+def get_db():
+    """
+    Использует глобальное соединение.
+    Делает commit при успехе и rollback при ошибке.
+    """
+    global _global_conn
+
+    if _global_conn is None or _global_conn.closed:
+        connect_db()
+
+    try:
+        yield _global_conn
+        _global_conn.commit()
+    except Exception:
+        _global_conn.rollback()
+        raise
+
 
 def dict_to_dataclass(data: dict, cls):
     """Безопасно превращает словарь в датакласс, заполняя отсутствующие поля None."""
@@ -64,19 +102,6 @@ def row_to_round(row: dict) -> game.Round | None:
         guess=guess
     )
 
-
-@contextmanager
-def get_db():
-    """Открывает соединение, коммитит при успехе, откатывает при ошибке, закрывает."""
-    conn = psycopg.connect(DATABASE_URL)
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
 
 
 def init_db() -> None:
