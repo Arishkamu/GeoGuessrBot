@@ -20,11 +20,8 @@ DB_NAME = os.getenv("POSTGRES_DB")
 
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-if not DATABASE_URL:
-    raise RuntimeError(
-        "Переменная окружения DATABASE_URL не задана. "
-        "Создайте файл .env"
-    )
+if not all([DB_USER, DB_PASS, DB_HOST, DB_PORT, DB_NAME]):
+    raise RuntimeError("Не все переменные окружения POSTGRES_* заданы в .env")
 
 _pool: ConnectionPool | None = None
 
