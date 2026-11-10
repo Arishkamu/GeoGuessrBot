@@ -51,3 +51,11 @@ class Game:
     @property
     def is_finished(self) -> bool:
         return self.finished_at is not None
+
+ 
+@dataclass
+class User:
+    user_id: int
+    tg_id: int
+    username: str
+    total_score: int
