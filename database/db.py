@@ -242,7 +242,7 @@ def get_rounds_by_game(game_id: int) -> list[game.Round]:
                 (game_id,),
             )
             rows = cur.fetchall()
-            return [dict_to_dataclass(row, game.Round) for row in rows]
+            return [row_to_round(row) for row in rows]
 
 
 def get_game_by_id(game_id: int) -> game.Game | None:
