@@ -8,7 +8,7 @@ from dataclasses import fields
 
 from dotenv import load_dotenv
 
-from backend.app.models import game
+from app.models import game
 
 load_dotenv()
 
