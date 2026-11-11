@@ -1,8 +1,10 @@
 import os
 import psycopg
 from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
+from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, fields
+from dataclasses import fields
 
 from dotenv import load_dotenv
 
@@ -18,49 +20,44 @@ DB_NAME = os.getenv("POSTGRES_DB")
 
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
-if not DATABASE_URL:
-    raise RuntimeError(
-        "Переменная окружения DATABASE_URL не задана. "
-        "Создайте файл .env"
-    )
+if not all([DB_USER, DB_PASS, DB_HOST, DB_PORT, DB_NAME]):
+    raise RuntimeError("Не все переменные окружения POSTGRES_* заданы в .env")
 
-_global_conn: psycopg.Connection | None = None
+_pool: ConnectionPool | None = None
 
 
 def connect_db() -> None:
-    """Открывает соединение с БД. Вызывать при старте бота."""
-    global _global_conn
-    if _global_conn is None or _global_conn.closed:
-        _global_conn = psycopg.connect(DATABASE_URL)
-        print("Подключение к базе данных установлено.")
+    global _pool
+    if _pool is None or _pool.closed:
+        pool = ConnectionPool(
+            conninfo=DATABASE_URL,
+            min_size=2,
+            max_size=5,
+            open=False,
+        )
+        try:
+            pool.open(wait=True)
+        except Exception:
+            pool.close()
+            raise
+        _pool = pool
 
 
 def close_db() -> None:
-    """Закрывает соединение. Вызывать при выключении бота."""
-    global _global_conn
-    if _global_conn is not None and not _global_conn.closed:
-        _global_conn.close()
-        _global_conn = None
-        print("Подключение к базе данных закрыто.")
+    global _pool
+
+    if _pool is not None:
+        _pool.close()
+        _pool = None
 
 
 @contextmanager
-def get_db():
-    """
-    Использует глобальное соединение.
-    Делает commit при успехе и rollback при ошибке.
-    """
-    global _global_conn
-
-    if _global_conn is None or _global_conn.closed:
-        connect_db()
-
-    try:
-        yield _global_conn
-        _global_conn.commit()
-    except Exception:
-        _global_conn.rollback()
-        raise
+def get_db() -> Iterator[psycopg.Connection]:
+    pool = _pool
+    if pool is None:
+        raise RuntimeError("Пул соединений закрыт")
+    with pool.connection() as conn:
+        yield conn
 
 
 def dict_to_dataclass(data: dict, cls):
