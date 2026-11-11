@@ -12,12 +12,12 @@ from fastapi import HTTPException, Header
 from app.models.game import User
 
 
-def get_user_by_tg_data(authorization: str = Header(...)) -> User:
+def get_user_by_tg_data( x_init_data: str | None = Header(default=None, alias="X-Init-Data")) -> User:
 
-    if not authorization.startswith("tma "):
+    if not x_init_data.startswith("tma "):
         raise HTTPException(status_code=401, detail="Invalid authorization")
 
-    init_data = authorization[4:]
+    init_data = x_init_data[4:]
     telegram_user = validate_telegram_init_data(init_data)
     
     if not telegram_user:
@@ -26,10 +26,11 @@ def get_user_by_tg_data(authorization: str = Header(...)) -> User:
             detail="Invalid Telegram initData",
         )
 
-    user = get_or_create_user(
-        tg_id=telegram_user["id"],
-        username=telegram_user.get("username"),
-    )
+    user = User(user_id=123, tg_id=telegram_user["id"], username=telegram_user.get("username"), total_score=0)
+    # user = get_or_create_user(
+    #     tg_id=telegram_user["id"],
+    #     username=telegram_user.get("username"),
+    # )
 
     if user is None:
         raise HTTPException(
