@@ -106,6 +106,22 @@ def row_to_round(row: dict) -> game.Round | None:
         guess=guess
     )
 
+def row_to_location(row: dict) -> game.Location | None:
+    """Собирает объект Location из плоского словаря БД."""
+    if row is None:
+        return None
+
+    center_coords = game.Coordinates(
+        latitude=row['center_lat'],
+        longitude=row['center_lon']
+    )
+
+    return game.Location(
+        location_id=row['location_id'],
+        name=row['name'],
+        center=center_coords,
+        radius=row['radius']
+    )
 
 
 def init_db() -> None:
@@ -113,6 +129,14 @@ def init_db() -> None:
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
+                CREATE TABLE IF NOT EXISTS locations (
+                    location_id  SERIAL PRIMARY KEY,
+                    name         TEXT UNIQUE NOT NULL,
+                    center_lat   FLOAT NOT NULL,
+                    center_lon   FLOAT NOT NULL,
+                    radius       FLOAT NOT NULL
+                );
+                
                 CREATE TABLE IF NOT EXISTS users (
                     user_id      SERIAL PRIMARY KEY,
                     tg_id        BIGINT UNIQUE NOT NULL,
@@ -126,7 +150,8 @@ def init_db() -> None:
                     rounds_total INTEGER NOT NULL DEFAULT 0,
                     started_at   TIMESTAMP NOT NULL DEFAULT NOW(),
                     finished_at  TIMESTAMP,
-                    total_score  INTEGER NOT NULL DEFAULT 0
+                    total_score  INTEGER NOT NULL DEFAULT 0,
+                    location_id  INTEGER REFERENCES locations(location_id) ON DELETE SET NULL
                 );
 
                 CREATE TABLE IF NOT EXISTS rounds (
@@ -156,9 +181,10 @@ def reset_db() -> None:
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                DROP TABLE users CASCADE;
-                DROP TABLE games CASCADE;
                 DROP TABLE rounds CASCADE;
+                DROP TABLE games CASCADE;
+                DROP TABLE users CASCADE;
+                DROP TABLE locations CASCADE;
             """)
 
 
@@ -181,7 +207,7 @@ def get_or_create_user(tg_id: int, username: str | None = None) -> game.User | N
             return dict_to_dataclass(row, game.User)
 
 
-def create_game(user_id: int) -> game.Game | None:
+def create_game(user_id: int, location_id: int | None = None) -> game.Game | None:
     """Создаёт новую игровую сессию.
     finished_at = NULL означает, что игра ещё активна.
     """
@@ -189,10 +215,10 @@ def create_game(user_id: int) -> game.Game | None:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 """
-                INSERT INTO games (user_id) VALUES (%s)
+                INSERT INTO games (user_id, location_id) VALUES (%s, %s)
                 RETURNING *
                 """,
-                (user_id,),
+                (user_id, location_id),
             )
             row = cur.fetchone()
             return dict_to_dataclass(row, game.Game)
@@ -280,3 +306,61 @@ def get_game_by_id(game_id: int) -> game.Game | None:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute("SELECT * FROM games WHERE game_id = %s", (game_id,))
             return dict_to_dataclass(cur.fetchone(), game.Game)
+
+
+
+
+
+
+
+
+
+def add_location(name: str, center: game.Coordinates, radius: float) -> game.Location | None:
+    """Добавляет новуб локацию в базу с его центром и радиусом"""
+    with get_db() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                INSERT INTO locations (name, center_lat, center_lon, radius) 
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (name) DO UPDATE 
+                    SET center_lat = EXCLUDED.center_lat,
+                        center_lon = EXCLUDED.center_lon,
+                        radius = EXCLUDED.radius
+                RETURNING *
+                """,
+                (name, center.latitude, center.longitude, radius),
+            )
+            return row_to_location(cur.fetchone())
+
+
+def get_all_locations() -> list[game.Location]:
+    """Возвращает список всех локаций"""
+    with get_db() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("SELECT * FROM locations ORDER BY name")
+            rows = cur.fetchall()
+            return [row_to_location(row) for row in rows]
+
+
+def get_game_location_info(game_id: int) -> game.Location | None:
+    """Возвращает локацию и его радиус для конкретной игры.
+    Если игра в стандартном режиме, вернет None"""
+    with get_db() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT l.* FROM locations l
+                JOIN games g ON g.location_id = l.location_id
+                WHERE g.game_id = %s
+                """,
+                (game_id,),
+            )
+            return row_to_location(cur.fetchone())
+
+def get_location_by_id(location_id: int) -> game.Location | None:
+    """Возвращает локацию по её ID или None, если её не существует."""
+    with get_db() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("SELECT * FROM locations WHERE location_id = %s", (location_id,))
+            return row_to_location(cur.fetchone())

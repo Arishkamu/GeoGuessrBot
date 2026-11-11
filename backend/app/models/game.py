@@ -48,6 +48,8 @@ class Game:
     finished_at: datetime | None = None
     total_score: int = 0
 
+    location_id: int | None = None
+
     @property
     def is_finished(self) -> bool:
         return self.finished_at is not None
@@ -59,3 +61,11 @@ class User:
     tg_id: int
     username: str
     total_score: int
+
+
+@dataclass(frozen=True)
+class Location:
+    location_id: int
+    name: str
+    center: Coordinates
+    radius: float
