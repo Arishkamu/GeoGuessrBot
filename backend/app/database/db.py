@@ -115,8 +115,8 @@ def row_to_location(row: dict) -> game.Location | None:
         location_id=row['location_id'],
         name=row['name'],
         west_lon=row['west_lon'],
-        east_lon=row['east_lon'],
         south_lat=row['south_lat'],
+        east_lon=row['east_lon'],
         north_lat=row['north_lat']
     )
 
@@ -130,8 +130,8 @@ def init_db() -> None:
                     location_id  SERIAL PRIMARY KEY,
                     name         TEXT UNIQUE NOT NULL,
                     west_lon     FLOAT NOT NULL,
-                    east_lon     FLOAT NOT NULL,
                     south_lat    FLOAT NOT NULL,
+                    east_lon     FLOAT NOT NULL,
                     north_lat    FLOAT NOT NULL
                 );
                 
