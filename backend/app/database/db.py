@@ -432,7 +432,18 @@ def seed_locations() -> None:
                 ('British Isles', -10.0, 50.0, 2.0, 59.0),
                 ('Iberian Peninsula', -10.0, 36.0, 3.0, 44.0),
                 ('France', -5.0, 44.0, 5.0, 50.0),
-                ('Alps', 5.0, 44.0, 15.0, 48.0)
+                ('Alps', 5.0, 44.0, 15.0, 48.0),
+                ('USA', -125.0, 30.0, -66.0, 49.0),
+                ('Germany', 5.8, 47.2, 15.0, 55.0),
+                ('Italy', 6.6, 35.4, 18.5, 46.1),
+                ('Spain', -7.3, 36.0, 3.3, 43.8),
+                ('United Kingdom', -6.0, 49.9, 1.7, 60.8),
+                ('Japan', 130.0, 24.0, 145.0, 42.5),
+                ('Brazil', -70.0, -33.7, -34.7, 0.2),
+                ('Russia', 29.6, 50.0, 140.0, 81.8),
+                ('Turkey', 26.5, 36.8, 44.8, 41.6),
+                ('Australia', 113.1, -43.7, 153.6, -10.6),
+                ('South Africa', 16.4, -34.8, 32.8, -22.1)
                 ON CONFLICT (name) DO UPDATE SET
                   west_lon  = EXCLUDED.west_lon,
                   south_lat = EXCLUDED.south_lat,
