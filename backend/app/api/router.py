@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.models.game import *
 from app.api.auth import get_user_by_tg_data
-from app.api.router_models import *
+from backend.app.models.router_models import *
 from app.services.game_service import *
 from app.services.panorama_service import get_image_url
 
