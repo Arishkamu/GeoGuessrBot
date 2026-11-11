@@ -15,6 +15,7 @@ def _generate_random_bbox(radius_m: int) -> list[float]:
     lon_delta = radius_m / (111_320 * math.cos(math.radians(latitude)))
 
     return [-4.36170, 48.10831, -4.36210, 48.10897]
+
 # [
 #         longitude - lon_delta,
 #         latitude - lat_delta,
