@@ -316,7 +316,7 @@ def get_game_by_id(game_id: int) -> game.Game | None:
 
 
 def add_location(name: str, center: game.Coordinates, radius: float) -> game.Location | None:
-    """Добавляет новый город в базу с его центром и радиусом"""
+    """Добавляет новуб локацию в базу с его центром и радиусом"""
     with get_db() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
@@ -335,7 +335,7 @@ def add_location(name: str, center: game.Coordinates, radius: float) -> game.Loc
 
 
 def get_all_locations() -> list[game.Location]:
-    """Возвращает список всех городов"""
+    """Возвращает список всех локаций"""
     with get_db() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute("SELECT * FROM locations ORDER BY name")
@@ -344,7 +344,7 @@ def get_all_locations() -> list[game.Location]:
 
 
 def get_game_location_info(game_id: int) -> game.Location | None:
-    """Возвращает город и его радиус для конкретной игры.
+    """Возвращает локацию и его радиус для конкретной игры.
     Если игра в стандартном режиме, вернет None"""
     with get_db() as conn:
         with conn.cursor(row_factory=dict_row) as cur:
@@ -356,4 +356,11 @@ def get_game_location_info(game_id: int) -> game.Location | None:
                 """,
                 (game_id,),
             )
+            return row_to_location(cur.fetchone())
+
+def get_location_by_id(location_id: int) -> game.Location | None:
+    """Возвращает локацию по её ID или None, если её не существует."""
+    with get_db() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("SELECT * FROM locations WHERE location_id = %s", (location_id,))
             return row_to_location(cur.fetchone())
