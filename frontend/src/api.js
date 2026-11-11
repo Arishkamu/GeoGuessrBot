@@ -30,7 +30,7 @@ export function haversine(la1, lo1, la2, lo2) {
 }
 
 async function request(method, path, body) {
-  //if (demo) return mockRequest(method, path, body)
+  if (demo) return mockRequest(method, path, body)
   // если сервер молчит дольше 8 секунд, считаем его недоступным (иначе кнопка зависнет навсегда)
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), 8000)
@@ -45,7 +45,10 @@ async function request(method, path, body) {
       const body = await res.json().catch(() => null)   // FastAPI кладёт причину в поле detail
       const err = new Error(`${path} ${res.status}`)
       err.status = res.status
-      err.detail = typeof body?.detail === 'string' ? body.detail : ''
+      const d = body?.detail
+      err.detail = typeof d === 'string' ? d
+        : Array.isArray(d) ? d.map((x) => `${(x.loc || []).join('.')}: ${x.msg}`).join('; ')   // 422: какое поле не подошло
+        : ''
       throw err
     }
     return await res.json()
@@ -92,21 +95,70 @@ async function mockRequest(method, path, body) {
 }
 
 /* ---------- то, чем пользуется интерфейс ---------- */
+/* Ручки бэкенда команды:
+     POST /api/game/start          -> { game_id }
+     GET  /api/round/{game_id}     -> { round_id, round_no, image_url }
+     POST /api/guess/{game_id}     { round_id, latitude, longitude }
+                                   -> { true_coordinates:{latitude,longitude}, distance_km, score, is_game_finished }
+     POST /api/game/finish?game_id=
+   Интерфейсу нужен другой вид (token, true, total), поэтому здесь они переводятся друг в друга.
+   В демо-режиме ходим по старым путям: их знает mockRequest. */
+const live = { gameId: null, roundId: null, total: 0 }
+
+const asRound = (r) => ({
+  round_no: r.round_no, rounds_total: null, token: String(r.round_id), image_url: r.image_url, kind: r.kind || 'pano',
+})
+
+async function liveRound() {
+  const r = await request('GET', `/api/round/${live.gameId}`)
+  live.roundId = r.round_id
+  return asRound(r)
+}
+
+async function liveStart() {
+  const g = await request('POST', '/api/game/start')
+  live.gameId = g.game_id
+  live.total = 0
+  return liveRound()
+}
+
 export async function startGame(countries = []) {
-  const body = countries.length ? { countries } : undefined
+  const body = countries.length ? { countries } : undefined   // сервер пока не использует, ручка start ждёт без тела
+  const run = () => (demo ? request('POST', '/api/game/start', body) : liveStart())
   try {
-    return { round: await request('POST', '/api/game/start', body), demo, reason: demoReason }
+    return { round: await run(), demo, reason: demoReason }
   } catch (e) {
     if (demo) throw e
     if (e?.status >= 400 && e.status < 500 && e.status !== 401) throw e   // например «для выбранных стран нет снимков»: сервер жив, демо не нужно
     demo = true // сервер недоступен: играем на тестовых данных
     demoReason = reasonOf(e)
     console.warn('[geoguessr] демо-режим:', demoReason, e)
-    return { round: await request('POST', '/api/game/start', body), demo, reason: demoReason }
+    return { round: await run(), demo, reason: demoReason }
   }
 }
-export const nextRound = () => request('GET', '/api/round')
-export const sendGuess = (token, g) => request('POST', '/api/guess', { token, lat: g.lat, lon: g.lon })
-export const finishGame = (token) => request('POST', '/api/game/finish', { token })
+
+export const nextRound = () => (demo ? request('GET', '/api/round') : liveRound())
+
+export async function sendGuess(token, g) {
+  if (demo) return request('POST', '/api/guess', { token, lat: g.lat, lon: g.lon })
+  const payload = { round_id: Number(live.roundId ?? token), latitude: g.lat, longitude: g.lon }   // ровно поля GuessRequest
+  let r
+  try {
+    r = await request('POST', `/api/guess/${live.gameId}`, payload)
+  } catch (e) {
+    console.warn('[geoguessr] догадка не принята:', e.status, e.detail, payload)
+    throw e
+  }
+  live.total += r.score
+  return {
+    distance_km: r.distance_km, score: r.score, total: live.total,
+    true: { lat: r.true_coordinates.latitude, lon: r.true_coordinates.longitude },
+    author: '', license: '', source_url: '', finished: !!r.is_game_finished,
+  }
+}
+
+export const finishGame = () => (demo
+  ? request('POST', '/api/game/finish')
+  : request('POST', `/api/game/finish?game_id=${live.gameId}`))
 export const getCountries = () => request('GET', '/api/countries')
 export const getTop = () => request('GET', '/api/top')
