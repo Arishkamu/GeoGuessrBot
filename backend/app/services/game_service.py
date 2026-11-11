@@ -71,8 +71,11 @@ def next_round(user_id: int, game_id: int) -> models.Round:
         if location is None:
             raise ValueError("location not found")
 
-    # Use location to generate coordinates and get panorama/picture
-    panorama_id, correct_coordinates = generate_panorama(next_number)
+    # снимок и его настоящие координаты берём из Panoramax
+    result = generate_panorama(game.location_id)
+    if result is None:
+        raise ValueError("no panorama found")
+    panorama_id, correct_coordinates = result
 
     return db.create_round(
         game_id=game_id,
@@ -130,3 +133,8 @@ def get_game_location(user_id: int, game_id: int) -> models.Location | None:
         return None
 
     return db.get_location_by_id(location_id=game.location_id)
+
+def get_location_by_id(loc_id: int | None) -> models.Location | None:
+    if loc_id is None:
+        return None
+    return db.get_location_by_id(location_id=loc_id)
