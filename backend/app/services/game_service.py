@@ -1,8 +1,107 @@
 
-def create_game(user_id: int, rounds_total: int = 5):
-    if rounds_total <= 0:
-        raise ValueError
+from app.models.game import Game, Round, Coordinates, Guess
+from .scoring import evaluate_guess
+import app.database.db as db
 
-    # TODO: db method
-    return create_game(user_id)
 
+ROUNDS_PER_GAME = 5
+
+
+def create_game(user_id: int) -> Game | None:
+    return db.create_game(user_id)
+
+
+def _get_user_game(user_id: int, game_id: int) -> Game:
+    game = db.get_game_by_id(game_id)
+
+    if game is None:
+        raise ValueError("game not found")
+
+    if game.user_id != user_id:
+        raise ValueError("game does not belong to the user")
+
+    return game
+
+
+def _get_last_round(game_id: int) -> Round | None:
+    rounds = db.get_rounds_by_game(game_id)
+
+    if not rounds:
+        return None
+
+    return rounds[-1]
+
+
+def get_current_round(user_id: int, game_id: int) -> Round | None:
+    _get_user_game(user_id, game_id)
+
+    return _get_last_round(game_id)
+
+
+def next_round(user_id: int, game_id: int) -> Round:
+    game = _get_user_game(user_id, game_id)
+
+    if game.is_finished:
+        raise ValueError("game is already finished")
+
+    last_round = _get_last_round(game_id)
+
+    if last_round is None:
+        next_number = 1
+    elif not last_round.is_completed:
+        return last_round
+    else:
+        next_number = last_round.round_number + 1
+
+    if next_number > ROUNDS_PER_GAME:
+        raise ValueError("round limit exceeded")
+
+    # Generate coordinates ang get panorama/picture
+    panorama_id = f"test_panorama_{next_number}"
+    correct_coordinates = Coordinates(latitude=1, longitude=1)
+
+    return db.create_round(
+        game_id=game_id,
+        round_number=next_number,
+        panorama_id=panorama_id,
+        correct_coordinates=correct_coordinates,
+    )
+
+
+def submit_guess( user_id: int, game_id: int, round_id: int, coordinates: Coordinates) -> tuple[Round, Game]:
+    game = _get_user_game(user_id, game_id)
+
+    if game.is_finished:
+        raise ValueError("game is already finished")
+
+    current_round = _get_last_round(game_id)
+
+    if current_round is None:
+        raise ValueError("no active round")
+
+    if current_round.round_id != round_id:
+        raise ValueError("round is not the current round")
+
+    if current_round.is_completed:
+        raise ValueError("round is already completed")
+
+    guess = evaluate_guess(
+        correct=current_round.correct_coordinates,
+        guessed=coordinates,
+    )
+
+    return db.complete_round(
+        round_id=round_id,
+        guess=guess,
+    )
+
+
+def get_game_result(user_id: int, game_id: int) -> tuple[Game, list[Round]]:
+    game = _get_user_game(user_id, game_id)
+
+    if not game.is_finished:
+        raise ValueError("game is not finished yet")
+
+    rounds = db.get_rounds_by_game(game_id)
+
+    return game, rounds

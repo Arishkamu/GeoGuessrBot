@@ -6,7 +6,7 @@ from dataclasses import dataclass, fields
 
 from dotenv import load_dotenv
 
-from backend.app.models import game
+from app.models import game
 
 load_dotenv()
 
@@ -139,13 +139,13 @@ def init_db() -> None:
                     panorama_id    TEXT NOT NULL,
                     correct_lat    FLOAT NOT NULL,
                     correct_lon    FLOAT NOT NULL,
-                    
+
                     -- Данные для ответа игрока (заполняются позже)
                     guess_lat      FLOAT,
                     guess_lon      FLOAT,
                     distance_km    FLOAT,
                     points         INTEGER NOT NULL DEFAULT 0,
-                    
+
                     UNIQUE(game_id, round_number)
                 );
 
