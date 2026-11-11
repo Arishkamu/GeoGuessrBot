@@ -8,11 +8,15 @@ from urllib.parse import parse_qsl
 from dotenv import load_dotenv
 from fastapi import HTTPException, Header
 
-# from app.services.game_service import get_or_create_user
+from app.services.game_service import get_or_create_user
 from app.models.game import User
 
+NO_AUTH_MODE = True
+CUR_TG_ID = 123456
 
 def get_user_by_tg_data( x_init_data: str | None = Header(default=None, alias="X-Init-Data")) -> User:
+    if (NO_AUTH_MODE):
+        return get_or_create_user(CUR_TG_ID)
 
     if not x_init_data.startswith("tma "):
         raise HTTPException(status_code=401, detail="Invalid authorization")
@@ -26,11 +30,10 @@ def get_user_by_tg_data( x_init_data: str | None = Header(default=None, alias="X
             detail="Invalid Telegram initData",
         )
 
-    user = User(user_id=123, tg_id=telegram_user["id"], username=telegram_user.get("username"), total_score=0)
-    # user = get_or_create_user(
-    #     tg_id=telegram_user["id"],
-    #     username=telegram_user.get("username"),
-    # )
+    user = get_or_create_user(
+        tg_id=telegram_user["id"],
+        username=telegram_user.get("username"),
+    )
 
     if user is None:
         raise HTTPException(

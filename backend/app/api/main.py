@@ -5,6 +5,7 @@ import os
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.router import router
+from app.database.db import init_db, connect_db
 
 load_dotenv()
 
@@ -26,4 +27,7 @@ app.add_middleware(
 )
 
 # Register routers
+
+connect_db()
+init_db()
 app.include_router(router)

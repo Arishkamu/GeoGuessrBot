@@ -18,7 +18,7 @@ def get_status():
 def start_game(current_user: User = Depends(get_user_by_tg_data)):
     game = create_game(current_user.user_id)
     return {
-        "game_id": game.id
+        "game_id": game.game_id
     }
 
 
@@ -41,12 +41,13 @@ def get_round(
 # POST /api/guess
 @router.post("/guess/{game_id}")
 def make_guess(
+    game_id: int,
     request: GuessRequest,
     current_user: User = Depends(get_user_by_tg_data),
 ):
     round_obj, game = submit_guess(
         user_id=current_user.user_id,
-        game_id=request.game_id,
+        game_id=game_id,
         round_id=request.round_id,
         coordinates=Coordinates(
             latitude=request.latitude,
@@ -56,8 +57,8 @@ def make_guess(
 
     return GuessResponse(
         true_coordinates=CoordinatesResponse(
-            latitude=round_obj.true_coordinates.latitude,
-            longitude=round_obj.true_coordinates.longitude,
+            latitude=round_obj.guess.coordinates.latitude,
+            longitude=round_obj.guess.coordinates.longitude,
         ),
         distance_km=round_obj.guess.distance_km,
         score=round_obj.guess.score,
