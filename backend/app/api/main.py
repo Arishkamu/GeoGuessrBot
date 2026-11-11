@@ -4,7 +4,7 @@ from fastapi import FastAPI
 import os
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.router import router
+from .router import router
 from app.database.db import init_db, connect_db
 
 load_dotenv()

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.models.game import *
-from app.api.auth import get_user_by_tg_data
+from .auth import get_user_by_tg_data
 from app.models.router_models import *
 from app.services.game_service import *
 from app.services.panorama_service import get_image_url
@@ -78,3 +78,15 @@ def finish_game(
     )
 
     return {}
+
+
+
+from app.services.panorama_service import generate_panorama
+@router.get("/panoramax/nearby")
+def find_panoramax_photos():
+    try:
+        (panoram_id, _) = generate_panorama()
+        return get_image_url(panoram_id)
+
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))

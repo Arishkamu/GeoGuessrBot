@@ -1,7 +1,7 @@
 from app.models import game as models
 from .scoring import evaluate_guess
 import app.database.db as db
-from app.services.panorama_service import generate_panorama_id
+from app.services.panorama_service import generate_panorama
 
 
 ROUNDS_PER_GAME = 5
@@ -72,7 +72,7 @@ def next_round(user_id: int, game_id: int) -> models.Round:
             raise ValueError("location not found")
 
     # Use location to generate coordinates and get panorama/picture
-    panorama_id = generate_panorama_id(next_number)
+    panorama_id, correct_coordinates = generate_panorama(game.location_id)
     correct_coordinates = models.Coordinates(latitude=1, longitude=1)
 
     return db.create_round(
@@ -131,3 +131,8 @@ def get_game_location(user_id: int, game_id: int) -> models.Location | None:
         return None
 
     return db.get_location_by_id(location_id=game.location_id)
+
+def get_location_by_id(loc_id: int | None) -> models.Location | None:
+    if loc_id is None:
+        return None
+    return db.get_location_by_id(location_id=loc_id)
