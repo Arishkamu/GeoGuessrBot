@@ -1,16 +1,26 @@
 /* Общение с сервером.
-   POST /api/game/start  -> { round_no, rounds_total: null, token, image_url, kind: 'pano' | 'photo' }
+   POST /api/game/start {countries?: ['FR','JP']} -> { round_no, rounds_total: null, token, image_url, kind: 'pano' | 'photo' }
    GET  /api/round       -> { round_no, rounds_total: null, token, image_url }
    POST /api/guess {token, lat, lon}
                          -> { distance_km, score, total, true:{lat,lon}, author, license, source_url, finished }
    POST /api/game/finish -> {}   (необязательно)
    GET  /api/top         -> [ { name, best } ]
+   GET  /api/countries   -> [ { code: 'FR', count: 12 } ]   страны, по которым есть снимки
    Каждый запрос идёт с заголовком X-Init-Data (подпись Telegram).
    Если сервер недоступен, включается демо-режим с тестовыми картинками. */
 import { initData } from './telegram.js'
 
 let demo = new URLSearchParams(window.location.search).has('mock')
+let demoReason = ''   // почему включился демо-режим (код ответа сервера или «нет связи»)
 export const isDemo = () => demo
+export const getDemoReason = () => demoReason
+
+/* Короткое объяснение ошибки для экрана: «401: неверная подпись», «таймаут», «нет связи». */
+function reasonOf(e) {
+  if (e?.name === 'AbortError') return 'сервер не ответил за 8 секунд'
+  if (e?.status) return e.detail ? `${e.status}: ${e.detail}` : String(e.status)
+  return 'нет связи с сервером'
+}
 
 export function haversine(la1, lo1, la2, lo2) {
   const R = 6371, rad = Math.PI / 180
@@ -20,7 +30,7 @@ export function haversine(la1, lo1, la2, lo2) {
 }
 
 async function request(method, path, body) {
-  if (demo) return mockRequest(method, path, body)
+  //if (demo) return mockRequest(method, path, body)
   // если сервер молчит дольше 8 секунд, считаем его недоступным (иначе кнопка зависнет навсегда)
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), 8000)
@@ -31,7 +41,13 @@ async function request(method, path, body) {
       body: body ? JSON.stringify(body) : undefined,
       signal: ctrl.signal,
     })
-    if (!res.ok) throw new Error(`${path} ${res.status}`)
+    if (!res.ok) {
+      const body = await res.json().catch(() => null)   // FastAPI кладёт причину в поле detail
+      const err = new Error(`${path} ${res.status}`)
+      err.status = res.status
+      err.detail = typeof body?.detail === 'string' ? body.detail : ''
+      throw err
+    }
     return await res.json()
   } finally {
     clearTimeout(timer)
@@ -70,21 +86,27 @@ async function mockRequest(method, path, body) {
     mock.total += score; mock.n += 1
     return { distance_km: d, score, total: mock.total, true: { lat: p.lat, lon: p.lon }, author: 'Демо', license: 'CC0', source_url: '', finished: false }
   }
+  if (path === '/api/countries') return [{ code: 'FR', count: 12 }, { code: 'JP', count: 9 }, { code: 'ZA', count: 6 }, { code: 'AR', count: 5 }, { code: 'IS', count: 4 }]
   if (path === '/api/top') return [{ name: 'Аня', best: 21840 }, { name: 'Игорь', best: 19320 }, { name: 'Мария', best: 17105 }]
   throw new Error('mock: ' + path)
 }
 
 /* ---------- то, чем пользуется интерфейс ---------- */
-export async function startGame() {
+export async function startGame(countries = []) {
+  const body = countries.length ? { countries } : undefined
   try {
-    return { round: await request('POST', '/api/game/start'), demo }
+    return { round: await request('POST', '/api/game/start', body), demo, reason: demoReason }
   } catch (e) {
     if (demo) throw e
+    if (e?.status >= 400 && e.status < 500 && e.status !== 401) throw e   // например «для выбранных стран нет снимков»: сервер жив, демо не нужно
     demo = true // сервер недоступен: играем на тестовых данных
-    return { round: await request('POST', '/api/game/start'), demo }
+    demoReason = reasonOf(e)
+    console.warn('[geoguessr] демо-режим:', demoReason, e)
+    return { round: await request('POST', '/api/game/start', body), demo, reason: demoReason }
   }
 }
 export const nextRound = () => request('GET', '/api/round')
 export const sendGuess = (token, g) => request('POST', '/api/guess', { token, lat: g.lat, lon: g.lon })
 export const finishGame = (token) => request('POST', '/api/game/finish', { token })
+export const getCountries = () => request('GET', '/api/countries')
 export const getTop = () => request('GET', '/api/top')

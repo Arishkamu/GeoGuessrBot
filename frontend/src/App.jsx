@@ -3,6 +3,7 @@ import { initTelegram } from './telegram.js'
 import { useGame } from './hooks/useGame.js'
 import Photo from './components/Photo.jsx'
 import Pano from './components/Pano.jsx'
+import DemoBadge from './components/DemoBadge.jsx'
 import Hud from './components/Hud.jsx'
 import MapCard from './components/MapCard.jsx'
 import Dock from './components/Dock.jsx'
@@ -81,7 +82,8 @@ export default function App() {
         )}
       </div>
 
-      {g.phase === 'start' && <StartScreen busy={g.busy} error={g.error} demo={g.demo} onPlay={g.start} />}
+      {g.demo && g.phase !== 'start' && g.demoReason && <DemoBadge reason={g.demoReason} />}
+      {g.phase === 'start' && <StartScreen busy={g.busy} error={g.error} demo={g.demo} demoReason={g.demoReason} onPlay={g.start} />}
       {g.phase === 'final' && <FinalScreen total={g.total} history={g.history} onAgain={g.start} />}
 
       {viewer && g.round && !isPano && (

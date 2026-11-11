@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { getTop } from '../api.js'
 import { fmt } from '../utils.js'
 
-/* Список лучших игр. limit — сколько строк показывать. */
 export default function TopList({ id, limit = 5 }) {
   const [rows, setRows] = useState([])
   useEffect(() => {

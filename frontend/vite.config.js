@@ -11,7 +11,7 @@ export default defineConfig({
     allowedHosts: true,
     // запросы /api уйдут на сервер игры (FastAPI). Он должен работать НА ДРУГОМ порту, не на порту Vite:
     // иначе прокси отправит запрос самому себе, и кнопки зависнут.
-    proxy: { '/api': 'http://localhost:8080', '/photos': 'http://localhost:8080' },
+    proxy: { '/api': 'http://localhost:8000', '/photos': 'http://localhost:8080' },
   },
   preview: { host: true, port: 4173, allowedHosts: true },
 })

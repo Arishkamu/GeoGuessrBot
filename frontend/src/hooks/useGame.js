@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import * as api from '../api.js'
 import { haptic } from '../telegram.js'
 
@@ -14,20 +14,24 @@ export function useGame() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const [demo, setDemo] = useState(api.isDemo())
+  const [demoReason, setDemoReason] = useState(api.getDemoReason())
   const [mapBig, setMapBig] = useState(false)
+  const countriesRef = useRef([])           // выбранные страны; «Ещё раз» на финальном экране играет с тем же выбором
 
   const begin = useCallback((r) => {
     setRound(r); setGuess(null); setLast(null); setMapBig(false); setError(null); setPhase('play')
   }, [])
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (countries) => {
+    // сюда может прийти событие клика (onClick={g.start}), поэтому берём только массив
+    if (Array.isArray(countries)) countriesRef.current = countries
     setBusy(true); setError(null)
     try {
-      const { round: r, demo: isDemo } = await api.startGame()
-      setDemo(isDemo); setTotal(0); setHistory([])
+      const { round: r, demo: isDemo, reason } = await api.startGame(countriesRef.current)
+      setDemo(isDemo); setDemoReason(reason || ''); setTotal(0); setHistory([])
       begin(r)
     } catch (e) {
-      setError('Не получилось начать игру. Попробуй ещё раз.')
+      setError(e?.detail || 'Не получилось начать игру. Попробуй ещё раз.')
     } finally {
       setBusy(false)
     }
@@ -74,5 +78,5 @@ export function useGame() {
 
   const toggleMap = useCallback(() => setMapBig((b) => !b), [])
 
-  return { phase, round, guess, last, total, history, busy, error, demo, mapBig, start, pick, submit, next, finish, toggleMap }
+  return { phase, round, guess, last, total, history, busy, error, demo, demoReason, mapBig, start, pick, submit, next, finish, toggleMap }
 }
