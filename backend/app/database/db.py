@@ -111,16 +111,13 @@ def row_to_location(row: dict) -> game.Location | None:
     if row is None:
         return None
 
-    center_coords = game.Coordinates(
-        latitude=row['center_lat'],
-        longitude=row['center_lon']
-    )
-
     return game.Location(
         location_id=row['location_id'],
         name=row['name'],
-        center=center_coords,
-        radius=row['radius']
+        west_lon=row['west_lon'],
+        south_lat=row['south_lat'],
+        east_lon=row['east_lon'],
+        north_lat=row['north_lat']
     )
 
 
@@ -132,9 +129,10 @@ def init_db() -> None:
                 CREATE TABLE IF NOT EXISTS locations (
                     location_id  SERIAL PRIMARY KEY,
                     name         TEXT UNIQUE NOT NULL,
-                    center_lat   FLOAT NOT NULL,
-                    center_lon   FLOAT NOT NULL,
-                    radius       FLOAT NOT NULL
+                    west_lon     FLOAT NOT NULL,
+                    south_lat    FLOAT NOT NULL,
+                    east_lon     FLOAT NOT NULL,
+                    north_lat    FLOAT NOT NULL
                 );
                 
                 CREATE TABLE IF NOT EXISTS users (
@@ -315,23 +313,6 @@ def get_game_by_id(game_id: int) -> game.Game | None:
 
 
 
-def add_location(name: str, center: game.Coordinates, radius: float) -> game.Location | None:
-    """Добавляет новуб локацию в базу с его центром и радиусом"""
-    with get_db() as conn:
-        with conn.cursor(row_factory=dict_row) as cur:
-            cur.execute(
-                """
-                INSERT INTO locations (name, center_lat, center_lon, radius) 
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (name) DO UPDATE 
-                    SET center_lat = EXCLUDED.center_lat,
-                        center_lon = EXCLUDED.center_lon,
-                        radius = EXCLUDED.radius
-                RETURNING *
-                """,
-                (name, center.latitude, center.longitude, radius),
-            )
-            return row_to_location(cur.fetchone())
 
 
 def get_all_locations() -> list[game.Location]:
