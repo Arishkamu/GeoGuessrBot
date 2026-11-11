@@ -33,7 +33,6 @@ export default function MapCard({ phase, big, guess, truth, roundToken, sheetHei
       .setView(WORLD.center, WORLD.zoom)
     map.on('click', (e) => { if (phaseRef.current === 'play') pickRef.current(e.latlng) })
     mapRef.current = map
-    map.attributionControl.setPrefix('Leaflet')
     return () => { map.remove(); mapRef.current = null }
   }, [])
 
