@@ -8,37 +8,30 @@ from urllib.parse import parse_qsl
 from dotenv import load_dotenv
 from fastapi import HTTPException, Header
 
-# from app.services.game_service import get_or_create_user
+from app.services.game_service import get_or_create_user
 from app.models.game import User
 
+INIT_DATA_MAX_AGE = 24 * 3600
 
-def get_user_by_tg_data( x_init_data: str | None = Header(default=None, alias="X-Init-Data")) -> User:
 
-    if not x_init_data.startswith("tma "):
-        raise HTTPException(status_code=401, detail="Invalid authorization")
+def get_user_by_tg_data(x_init_data: str | None = Header(default=None, alias="X-Init-Data")) -> User:
+    if not x_init_data:
+        raise HTTPException(status_code=401, detail="Нужна подпись Telegram")
 
-    init_data = x_init_data[4:]
+    init_data = x_init_data[4:] if x_init_data.startswith("tma ") else x_init_data
+
     telegram_user = validate_telegram_init_data(init_data)
-    
     if not telegram_user:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid Telegram initData",
-        )
+        raise HTTPException(status_code=401, detail="Invalid Telegram initData")
 
-    user = User(user_id=123, tg_id=telegram_user["id"], username=telegram_user.get("username"), total_score=0)
-    # user = get_or_create_user(
-    #     tg_id=telegram_user["id"],
-    #     username=telegram_user.get("username"),
-    # )
-
+    user = get_or_create_user(
+        tg_id=telegram_user["id"],
+        username=telegram_user.get("username") or telegram_user.get("first_name") or f"Игрок {telegram_user['id']}",
+    )
     if user is None:
-        raise HTTPException(
-            status_code=500,
-            detail="Could not get or create user",
-        )
+        raise HTTPException(status_code=500, detail="Could not get or create user")
 
-    return User
+    return user
 
 load_dotenv()
 
@@ -85,7 +78,7 @@ def validate_telegram_init_data(init_data: str) -> dict | None:
         auth_date = int(data.get("auth_date", 0))
         current_time = int(time.time())
 
-        if auth_date <= 0 or current_time - auth_date > 300:
+        if auth_date <= 0 or current_time - auth_date > INIT_DATA_MAX_AGE:
             return None
 
         # Reject timestamps too far in the future
