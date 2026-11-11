@@ -1,8 +1,3 @@
-import math
-import httpx
-import random
-from .game_service import *
-from app.models import game
 
 PANORAMAX_API = "https://api.panoramax.xyz/api/search"
 
@@ -63,4 +58,6 @@ def _get_panorama_id(bbox: list[float], limit: int = 50) -> tuple[str, game.Coor
     return None
 
 def get_image_url(panorama_id: str):
-    return f"https://api.panoramax.xyz/api/pictures/{panorama_id}/sd.jpg"
+    return "https://api.panoramax.xyz/api/pictures/c3353397-ff7b-4e19-b76d-adad778f3113/sd.jpg"
+    raise("not implemented yet")
+
