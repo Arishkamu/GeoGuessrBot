@@ -1,6 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+const apiTarget = process.env.API_PROXY_TARGET
+
 // allowedHosts: true нужен, чтобы Vite пускал запросы с адресов туннеля (trycloudflare.com, ngrok).
 export default defineConfig({
   plugins: [react()],
@@ -11,7 +13,13 @@ export default defineConfig({
     allowedHosts: true,
     // запросы /api уйдут на сервер игры (FastAPI). Он должен работать НА ДРУГОМ порту, не на порту Vite:
     // иначе прокси отправит запрос самому себе, и кнопки зависнут.
-    proxy: { '/api': 'http://localhost:8080', '/photos': 'http://localhost:8080' },
+    proxy: { '/api': apiTarget, '/photos': apiTarget },
   },
-  preview: { host: true, port: 4173, allowedHosts: true },
+  preview: {
+    host: true,
+    port: 8000,
+    strictPort: true,
+    allowedHosts: true,
+    proxy: { '/api': apiTarget, '/photos': apiTarget },
+  },
 })
