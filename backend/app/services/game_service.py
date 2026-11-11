@@ -1,5 +1,4 @@
-
-from app.models.game import Game, Round, Coordinates, Guess
+from app.models import game as models
 from .scoring import evaluate_guess
 import app.database.db as db
 
@@ -7,11 +6,20 @@ import app.database.db as db
 ROUNDS_PER_GAME = 5
 
 
-def create_game(user_id: int) -> Game | None:
-    return db.create_game(user_id)
+def get_or_create_user(tg_id: int, username: str | None = None) -> models.User | None:
+    return db.get_or_create_user(tg_id=tg_id, username=username)
 
 
-def _get_user_game(user_id: int, game_id: int) -> Game:
+def create_game(user_id: int, location_id: int | None = None) -> models.Game | None:
+    if location_id is not None:
+        location = db.get_location_by_id(location_id)
+        if location is None:
+            raise ValueError("location not found")
+
+    return db.create_game(user_id=user_id, location_id=location_id)
+
+
+def _get_user_game(user_id: int, game_id: int) -> models.Game:
     game = db.get_game_by_id(game_id)
 
     if game is None:
@@ -23,7 +31,7 @@ def _get_user_game(user_id: int, game_id: int) -> Game:
     return game
 
 
-def _get_last_round(game_id: int) -> Round | None:
+def _get_last_round(game_id: int) -> models.Round | None:
     rounds = db.get_rounds_by_game(game_id)
 
     if not rounds:
@@ -32,13 +40,13 @@ def _get_last_round(game_id: int) -> Round | None:
     return rounds[-1]
 
 
-def get_current_round(user_id: int, game_id: int) -> Round | None:
+def get_current_round(user_id: int, game_id: int) -> models.Round | None:
     _get_user_game(user_id, game_id)
 
     return _get_last_round(game_id)
 
 
-def next_round(user_id: int, game_id: int) -> Round:
+def next_round(user_id: int, game_id: int) -> models.Round:
     game = _get_user_game(user_id, game_id)
 
     if game.is_finished:
@@ -56,9 +64,15 @@ def next_round(user_id: int, game_id: int) -> Round:
     if next_number > ROUNDS_PER_GAME:
         raise ValueError("round limit exceeded")
 
-    # Generate coordinates ang get panorama/picture
+    location = None
+    if game.location_id is not None:
+        location = db.get_location_by_id(game.location_id)
+        if location is None:
+            raise ValueError("location not found")
+
+    # Use location to generate coordinates and get panorama/picture
     panorama_id = f"test_panorama_{next_number}"
-    correct_coordinates = Coordinates(latitude=1, longitude=1)
+    correct_coordinates = models.Coordinates(latitude=1, longitude=1)
 
     return db.create_round(
         game_id=game_id,
@@ -68,7 +82,7 @@ def next_round(user_id: int, game_id: int) -> Round:
     )
 
 
-def submit_guess( user_id: int, game_id: int, round_id: int, coordinates: Coordinates) -> tuple[Round, Game]:
+def submit_guess( user_id: int, game_id: int, round_id: int, coordinates: models.Coordinates) -> tuple[models.Round, models.Game]:
     game = _get_user_game(user_id, game_id)
 
     if game.is_finished:
@@ -96,7 +110,7 @@ def submit_guess( user_id: int, game_id: int, round_id: int, coordinates: Coordi
     )
 
 
-def get_game_result(user_id: int, game_id: int) -> tuple[Game, list[Round]]:
+def get_game_result(user_id: int, game_id: int) -> tuple[models.Game, list[models.Round]]:
     game = _get_user_game(user_id, game_id)
 
     if not game.is_finished:
@@ -105,3 +119,14 @@ def get_game_result(user_id: int, game_id: int) -> tuple[Game, list[Round]]:
     rounds = db.get_rounds_by_game(game_id)
 
     return game, rounds
+
+def get_locations() -> list[models.Location]:
+    return db.get_all_locations()
+
+def get_game_location(user_id: int, game_id: int) -> models.Location | None:
+    game = _get_user_game(user_id, game_id)
+
+    if game.location_id is None:
+        return None
+
+    return db.get_location_by_id(location_id=game.location_id)
