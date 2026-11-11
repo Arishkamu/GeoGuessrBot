@@ -2,19 +2,16 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.models.game import *
 from app.api.auth import get_user_by_tg_data
-from router_models import *
+from app.api.router_models import *
 from app.services.game_service import *
 from app.services.panorama_service import get_image_url
 
 router = APIRouter(prefix="/api", tags=["Game"])
 
-# POST /api/game/start
-@router.post("/game/start")
-def start_game(current_user: User = Depends(get_user_by_tg_data)):
-    return {
-        "game_id": 239566,
-        "user_id": current_user.user_id
-    }
+@router.get("/status")
+def get_status():
+    return {"status": "ok"}
+
 
 # POST /api/game/start
 @router.post("/game/start")
