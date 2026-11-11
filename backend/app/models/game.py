@@ -16,7 +16,7 @@ class Coordinates:
 
 
 @dataclass(frozen=True)
-class Guess:
+class  Guess:
     coordinates: Coordinates
     distance_km: float
     score: int
