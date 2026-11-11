@@ -67,5 +67,7 @@ class User:
 class Location:
     location_id: int
     name: str
-    center: Coordinates
-    radius: float
+    west_lon: float
+    east_lon: float
+    south_lat: float
+    north_lat: float
