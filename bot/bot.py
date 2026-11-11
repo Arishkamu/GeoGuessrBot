@@ -6,7 +6,7 @@
   3. при запуске сам настраивает профиль бота: команды, тексты, кнопку меню.
 
 Запуск:
-    pip install aiogram
+    pip install aiogram python-dotenv
     export BOT_TOKEN=...                       # токен от @BotFather
     export WEBAPP_URL=https://ваш-домен/       # HTTPS-адрес мини-аппа
     # необязательно:
@@ -17,8 +17,10 @@
 import asyncio
 import logging
 import os
+from pathlib import Path
 
 import aiohttp
+from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandObject
 from aiogram.types import (
@@ -32,7 +34,10 @@ from aiogram.types import (
 
 logging.basicConfig(level=logging.INFO)
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+# токены берём из .env в корне репозитория; он главнее переменных, заданных в терминале
+load_dotenv(Path(__file__).resolve().parent.parent / ".env", override=True)
+
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip().strip("'\"")
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "")
 API_URL = (os.environ.get("API_URL") or WEBAPP_URL).rstrip("/")
 APP_LINK = os.environ.get("APP_LINK", "")

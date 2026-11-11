@@ -8,15 +8,7 @@ const pinIcon = (cls) =>
 
 const WORLD = { center: [30, 10], zoom: 2 }
 
-/* Карточка с картой. Leaflet подключён напрямую (без react-leaflet): так проще управлять
-   булавками, линией и анимацией раскрытия.
-   props:
-     phase        'play' | 'result'
-     guess        { lat, lon } | null     — догадка игрока
-     truth        { lat, lon } | null     — настоящая точка (после ответа)
-     roundToken   меняется в каждом раунде → карта возвращается к виду на весь мир
-     sheetHeight  высота нижней панели, чтобы кадр не прятался под ней
-     onPick(latlng), onToggle()  */
+
 export default function MapCard({ phase, big, guess, truth, roundToken, sheetHeight, onPick, onToggle }) {
   const boxRef = useRef(null)
   const mapRef = useRef(null)
@@ -33,7 +25,7 @@ export default function MapCard({ phase, big, guess, truth, roundToken, sheetHei
       .setView(WORLD.center, WORLD.zoom)
     map.on('click', (e) => { if (phaseRef.current === 'play') pickRef.current(e.latlng) })
     mapRef.current = map
-    map.attributionControl.setPrefix('Leaflet')
+    map.attributionControl.setPrefix('Leaflet')   
     return () => { map.remove(); mapRef.current = null }
   }, [])
 
@@ -43,7 +35,6 @@ export default function MapCard({ phase, big, guess, truth, roundToken, sheetHei
       const map = mapRef.current
       if (!map) return
       if (tilesRef.current) map.removeLayer(tilesRef.current)
-      // тайлы OpenStreetMap (ключ не нужен); тёмная тема получается фильтром через CSS-класс dark-tiles
       tilesRef.current = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap', maxZoom: 19,
         className: isDark() ? 'dark-tiles' : '',
@@ -75,7 +66,6 @@ export default function MapCard({ phase, big, guess, truth, roundToken, sheetHei
     return () => clearTimeout(id)
   }, [roundToken])
 
-  // раскрытие: настоящая точка, линия, кадр по обеим точкам
   useEffect(() => {
     const map = mapRef.current
     if (!map || !truth || !guess) return undefined

@@ -1,16 +1,26 @@
 /* Общение с сервером.
-   POST /api/game/start  -> { round_no, rounds_total: null, token, image_url, kind: 'pano' | 'photo' }
+   POST /api/game/start {countries?: ['FR','JP']} -> { round_no, rounds_total: null, token, image_url, kind: 'pano' | 'photo' }
    GET  /api/round       -> { round_no, rounds_total: null, token, image_url }
    POST /api/guess {token, lat, lon}
                          -> { distance_km, score, total, true:{lat,lon}, author, license, source_url, finished }
    POST /api/game/finish -> {}   (необязательно)
    GET  /api/top         -> [ { name, best } ]
+   GET  /api/countries   -> [ { code: 'FR', count: 12 } ]   страны, по которым есть снимки
    Каждый запрос идёт с заголовком X-Init-Data (подпись Telegram).
    Если сервер недоступен, включается демо-режим с тестовыми картинками. */
 import { initData } from './telegram.js'
 
 let demo = new URLSearchParams(window.location.search).has('mock')
+let demoReason = ''   // почему включился демо-режим (код ответа сервера или «нет связи»)
 export const isDemo = () => demo
+export const getDemoReason = () => demoReason
+
+/* Короткое объяснение ошибки для экрана: «401: неверная подпись», «таймаут», «нет связи». */
+function reasonOf(e) {
+  if (e?.name === 'AbortError') return 'сервер не ответил за 8 секунд'
+  if (e?.status) return e.detail ? `${e.status}: ${e.detail}` : String(e.status)
+  return 'нет связи с сервером'
+}
 
 export function haversine(la1, lo1, la2, lo2) {
   const R = 6371, rad = Math.PI / 180
@@ -31,7 +41,16 @@ async function request(method, path, body) {
       body: body ? JSON.stringify(body) : undefined,
       signal: ctrl.signal,
     })
-    if (!res.ok) throw new Error(`${path} ${res.status}`)
+    if (!res.ok) {
+      const body = await res.json().catch(() => null)   // FastAPI кладёт причину в поле detail
+      const err = new Error(`${path} ${res.status}`)
+      err.status = res.status
+      const d = body?.detail
+      err.detail = typeof d === 'string' ? d
+        : Array.isArray(d) ? d.map((x) => `${(x.loc || []).join('.')}: ${x.msg}`).join('; ')   // 422: какое поле не подошло
+        : ''
+      throw err
+    }
     return await res.json()
   } finally {
     clearTimeout(timer)
@@ -70,21 +89,76 @@ async function mockRequest(method, path, body) {
     mock.total += score; mock.n += 1
     return { distance_km: d, score, total: mock.total, true: { lat: p.lat, lon: p.lon }, author: 'Демо', license: 'CC0', source_url: '', finished: false }
   }
+  if (path === '/api/countries') return [{ code: 'FR', count: 12 }, { code: 'JP', count: 9 }, { code: 'ZA', count: 6 }, { code: 'AR', count: 5 }, { code: 'IS', count: 4 }]
   if (path === '/api/top') return [{ name: 'Аня', best: 21840 }, { name: 'Игорь', best: 19320 }, { name: 'Мария', best: 17105 }]
   throw new Error('mock: ' + path)
 }
 
 /* ---------- то, чем пользуется интерфейс ---------- */
-export async function startGame() {
+/* Ручки бэкенда команды:
+     POST /api/game/start          -> { game_id }
+     GET  /api/round/{game_id}     -> { round_id, round_no, image_url }
+     POST /api/guess/{game_id}     { round_id, latitude, longitude }
+                                   -> { true_coordinates:{latitude,longitude}, distance_km, score, is_game_finished }
+     POST /api/game/finish?game_id=
+   Интерфейсу нужен другой вид (token, true, total), поэтому здесь они переводятся друг в друга.
+   В демо-режиме ходим по старым путям: их знает mockRequest. */
+const live = { gameId: null, roundId: null, total: 0 }
+
+const asRound = (r) => ({
+  round_no: r.round_no, rounds_total: null, token: String(r.round_id), image_url: r.image_url, kind: r.kind || 'pano',
+})
+
+async function liveRound() {
+  const r = await request('GET', `/api/round/${live.gameId}`)
+  live.roundId = r.round_id
+  return asRound(r)
+}
+
+async function liveStart() {
+  const g = await request('POST', '/api/game/start')
+  live.gameId = g.game_id
+  live.total = 0
+  return liveRound()
+}
+
+export async function startGame(countries = []) {
+  const body = countries.length ? { countries } : undefined   // сервер пока не использует, ручка start ждёт без тела
+  const run = () => (demo ? request('POST', '/api/game/start', body) : liveStart())
   try {
-    return { round: await request('POST', '/api/game/start'), demo }
+    return { round: await run(), demo, reason: demoReason }
   } catch (e) {
     if (demo) throw e
+    if (e?.status >= 400 && e.status < 500 && e.status !== 401) throw e   // например «для выбранных стран нет снимков»: сервер жив, демо не нужно
     demo = true // сервер недоступен: играем на тестовых данных
-    return { round: await request('POST', '/api/game/start'), demo }
+    demoReason = reasonOf(e)
+    console.warn('[geoguessr] демо-режим:', demoReason, e)
+    return { round: await run(), demo, reason: demoReason }
   }
 }
-export const nextRound = () => request('GET', '/api/round')
-export const sendGuess = (token, g) => request('POST', '/api/guess', { token, lat: g.lat, lon: g.lon })
-export const finishGame = (token) => request('POST', '/api/game/finish', { token })
+
+export const nextRound = () => (demo ? request('GET', '/api/round') : liveRound())
+
+export async function sendGuess(token, g) {
+  if (demo) return request('POST', '/api/guess', { token, lat: g.lat, lon: g.lon })
+  const payload = { round_id: Number(live.roundId ?? token), latitude: g.lat, longitude: g.lon }   // ровно поля GuessRequest
+  let r
+  try {
+    r = await request('POST', `/api/guess/${live.gameId}`, payload)
+  } catch (e) {
+    console.warn('[geoguessr] догадка не принята:', e.status, e.detail, payload)
+    throw e
+  }
+  live.total += r.score
+  return {
+    distance_km: r.distance_km, score: r.score, total: live.total,
+    true: { lat: r.true_coordinates.latitude, lon: r.true_coordinates.longitude },
+    author: '', license: '', source_url: '', finished: !!r.is_game_finished,
+  }
+}
+
+export const finishGame = () => (demo
+  ? request('POST', '/api/game/finish')
+  : request('POST', `/api/game/finish?game_id=${live.gameId}`))
+export const getCountries = () => request('GET', '/api/countries')
 export const getTop = () => request('GET', '/api/top')

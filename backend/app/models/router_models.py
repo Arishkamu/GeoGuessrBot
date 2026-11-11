@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 
 class RoundResponse(BaseModel):
-    round_no: int
+    round_id: int
     image_url: str
 
 
