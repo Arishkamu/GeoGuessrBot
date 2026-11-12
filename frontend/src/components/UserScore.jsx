@@ -11,7 +11,7 @@ export default function UserScore({ profile, demo }) {
 
   return (
     <div className="user-score" role="status">
-      <span>Очки за всё время</span>
+      <span>Всего очков</span>
 
       <strong className="num">
         {profile.error

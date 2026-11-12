@@ -53,6 +53,7 @@ export default function StartScreen({ busy, error, demo, demoReason, onPlay, pro
 
   return (
     <div className="screen" id="startScreen">
+      <UserScore profile={profile} demo={demo} />
       <h1>GeoGuessr</h1>
       <p className="lead">Фото со всего мира. Отметь на карте, где оно сделано. Чем ближе, тем больше очков. Играй, сколько хочешь.</p>
       <div className="globe-wrap"><img src={globe} alt="" width="840" height="769" decoding="async" /></div>
@@ -65,7 +66,6 @@ export default function StartScreen({ busy, error, demo, demoReason, onPlay, pro
           </button>
         ))}
       </div>
-      <UserScore profile={profile} demo={demo} />
       <TopList id="startTop" limit={3} />
       <div className="actions">
         {activeGame && (

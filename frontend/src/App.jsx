@@ -88,7 +88,7 @@ export default function App() {
           activeGame={g.activeGame} checkingActive={g.checkingActive} activeCheckError={g.activeCheckError} />
       )}
       {g.phase === 'final' && (
-        <FinalScreen total={g.total} profile={g.profile} demo={g.demo} history={g.history} onAgain={g.start} />
+        <FinalScreen total={g.total} history={g.history} onAgain={g.start} />
       )}
 
       {viewer && g.round && !isPano && (
