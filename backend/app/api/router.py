@@ -2,10 +2,11 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.models.game import *
-from app.api.auth import get_user_by_tg_data
+from app.api.auth import get_user_by_tg_data, get_location_id
 from app.models.router_models import *
 from app.services.game_service import *
-from app.services.panorama_service import ensure_country_location, get_image_url, list_countries, generate_picture
+from app.services.panorama_service import get_image_url
+from app.services.location_service import list_countries
 from app.services.review import prefetch_image, send_round_review
 
 
@@ -14,10 +15,6 @@ router = APIRouter(prefix="/api", tags=["Game"])
 @router.get("/status")
 def get_status():
     return {"status": "ok"}
-
-
-class StartRequest(BaseModel):
-    country: str | None = None
 
 
 # GET /api/countries
@@ -29,16 +26,13 @@ def get_countries_list():
 # POST /api/game/start
 @router.post("/game/start")
 def start_game(
-    body: StartRequest | None = None,
+    location_id: int | None = Depends(get_location_id),
     current_user: User = Depends(get_user_by_tg_data),
 ):
-    location_id = None
-    if body and body.country:
-        try:
-            location_id = ensure_country_location(body.country.upper())
-        except ValueError as e:
+    try:
+        game = create_game(current_user.user_id, location_id)
+    except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-    game = create_game(current_user.user_id, location_id)
     return {
         "game_id": game.game_id
     }
@@ -108,13 +102,8 @@ def finish_game(
 
     return {}
 
-class ReviewRequest(BaseModel):
-    round_id: int
-    latitude: float = Field(ge=-90, le=90)
-    longitude: float = Field(ge=-180, le=180)
 
 _reviews_sent: set[tuple[int, int]] = set()
-
 
 # POST /api/review/{game_id}
 @router.post("/review/{game_id}")
@@ -144,6 +133,7 @@ def request_review(
         round_obj.round_number,
     )
     return {"status": "sent"}
+
 
 @router.get("/panoramax/nearby")
 def find_panoramax_photos():
