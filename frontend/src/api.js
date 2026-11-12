@@ -103,11 +103,30 @@ async function mockRequest(method, path, body) {
      POST /api/game/finish?game_id=
    Интерфейсу нужен другой вид (token, true, total), поэтому здесь они переводятся друг в друга.
    В демо-режиме ходим по старым путям: их знает mockRequest. */
-const live = { gameId: null, roundId: null, total: 0, guess: null }
+const live = { gameId: null, roundId: null, guess: null }
 
 const asRound = (r) => ({
-  round_no: r.round_no, rounds_total: null, token: String(r.round_id), image_url: r.image_url, kind: r.kind || 'pano',
+  round_no: r.round_no,
+  rounds_total: r.rounds_total,
+  total: r.game_total,
+  token: String(r.round_id),
+  image_url: r.image_url,
+  kind: r.kind || 'pano'
 })
+
+export const getActiveGame = () => (demo
+  ? Promise.resolve(null)
+  : request('GET', '/api/game/active'))
+
+export async function resumeGame() {
+  const state = await getActiveGame()
+  if (!state) return null
+
+  live.gameId = state.game_id
+  const round = state.current_round ? asRound(state.current_round) : await liveRound()
+  live.roundId = Number(round.token)
+  return { state, round }
+}
 
 async function liveRound() {
   const r = await request('GET', `/api/round/${live.gameId}`)
@@ -115,16 +134,15 @@ async function liveRound() {
   return asRound(r)
 }
 
-async function liveStart() {
-  const g = await request('POST', '/api/game/start')
+async function liveStart(body) {
+  const g = await request('POST', '/api/game/start', body)
   live.gameId = g.game_id
-  live.total = 0
   return liveRound()
 }
 
 export async function startGame(countries = []) {
-  const body = countries.length ? { countries } : undefined   // сервер пока не использует, ручка start ждёт без тела
-  const run = () => (demo ? request('POST', '/api/game/start', body) : liveStart())
+  const body = countries.length ? { country: countries[0] } : undefined   // сервер пока не использует, ручка start ждёт без тела
+  const run = () => (demo ? request('POST', '/api/game/start', body) : liveStart(body))
   try {
     return { round: await run(), demo, reason: demoReason }
   } catch (e) {
@@ -149,12 +167,16 @@ export async function sendGuess(token, g) {
     console.warn('[geoguessr] догадка не принята:', e.status, e.detail, payload)
     throw e
   }
-  live.total += r.score
   live.guess = { lat: g.lat, lon: g.lon }   // нужна, чтобы потом запросить разбор раунда
   return {
-    distance_km: r.distance_km, score: r.score, total: live.total,
-    true: { lat: r.true_coordinates.latitude, lon: r.true_coordinates.longitude },
-    author: '', license: '', source_url: '', finished: !!r.is_game_finished,
+  distance_km: r.distance_km, score: r.score,
+    total: r.game_total, user_total: r.user_total,
+    true: {
+      lat: r.true_coordinates.latitude,
+      lon: r.true_coordinates.longitude,
+    },
+    author: '', license: '',
+    source_url: '', finished: !!r.is_game_finished,
   }
 }
 
@@ -162,7 +184,7 @@ export async function sendGuess(token, g) {
 export async function requestReview() {
   if (demo) return { status: 'sent' }
   return request('POST', `/api/review/${live.gameId}`, {
-    round_id: Number(live.roundId), latitude: live.guess.lat, longitude: live.guess.lon,
+    round_id: Number(live.roundId),
   })
 }
 
@@ -171,3 +193,5 @@ export const finishGame = () => (demo
   : request('POST', `/api/game/finish?game_id=${live.gameId}`))
 export const getCountries = () => request('GET', '/api/countries')
 export const getTop = () => request('GET', '/api/top')
+
+export const getProfile = () => request('GET', '/api/me')

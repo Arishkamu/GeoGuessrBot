@@ -9,7 +9,7 @@ function ResultPanel({ result, busy, error, review, onReview, onNext, onFinish }
     <div className="result">
       <div className="main">
         <div className="dist num"><span>{fmt(dist)}</span><small>км от цели</small></div>
-        <div className="pts num">+{fmt(result.score)}</div>
+        <div className="pts num">+{fmt(result.score)}<small>очков за раунд</small></div>
       </div>
       <div className="meter" aria-hidden="true"><i style={{ width: `${width}%` }} /></div>
       <div className="credit">

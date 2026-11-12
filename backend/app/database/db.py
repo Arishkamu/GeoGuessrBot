@@ -134,7 +134,7 @@ def init_db() -> None:
                     east_lon     FLOAT NOT NULL,
                     north_lat    FLOAT NOT NULL
                 );
-                
+
                 CREATE TABLE IF NOT EXISTS users (
                     user_id      SERIAL PRIMARY KEY,
                     tg_id        BIGINT UNIQUE NOT NULL,
@@ -213,12 +213,24 @@ def create_game(user_id: int, location_id: int | None = None) -> game.Game | Non
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 """
-                INSERT INTO games (user_id, location_id) VALUES (%s, %s)
-                RETURNING *
+                SELECT * FROM games
+                WHERE user_id = %s AND finished_at IS NULL
+                LIMIT 1
                 """,
-                (user_id, location_id),
+                (user_id,),
             )
             row = cur.fetchone()
+
+            if row is None:
+                cur.execute(
+                    """
+                    INSERT INTO games (user_id, location_id) VALUES (%s, %s)
+                    RETURNING *
+                    """,
+                    (user_id, location_id),
+                )
+                row = cur.fetchone()
+
             return dict_to_dataclass(row, game.Game)
 
 def create_round(
@@ -253,12 +265,14 @@ def complete_round(
                 """
                 UPDATE rounds
                 SET guess_lat = %s, guess_lon = %s, distance_km = %s, points = %s
-                WHERE round_id = %s
+                WHERE round_id = %s AND guess_lat IS NULL
                 RETURNING *
                 """,
                 (guess.coordinates.latitude, guess.coordinates.longitude, guess.distance_km, guess.score, round_id),
             )
             round_row = cur.fetchone()
+            if round_row is None:
+                raise ValueError("round is already completed or does not exist")
             game_id = round_row['game_id']
             points = guess.score
 
@@ -274,6 +288,15 @@ def complete_round(
                 (points, game_id),
             )
             game_row = cur.fetchone()
+
+            cur.execute(
+                """
+                UPDATE users
+                SET total_score = total_score + %s
+                WHERE user_id = %s
+                """,
+                (points, game_row["user_id"]),
+            )
 
             # 3. Завершаем игру, если сыграно 5 раундов
             if game_row['rounds_total'] >= 5:
@@ -306,15 +329,6 @@ def get_game_by_id(game_id: int) -> game.Game | None:
             return dict_to_dataclass(cur.fetchone(), game.Game)
 
 
-
-
-
-
-
-
-
-
-
 def get_all_locations() -> list[game.Location]:
     """Возвращает список всех локаций"""
     with get_db() as conn:
@@ -345,6 +359,52 @@ def get_location_by_id(location_id: int) -> game.Location | None:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute("SELECT * FROM locations WHERE location_id = %s", (location_id,))
             return row_to_location(cur.fetchone())
+
+
+def get_user_total_score(user_id: int) -> int:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT total_score FROM users WHERE user_id = %s",
+                (user_id,),
+            )
+            row = cur.fetchone()
+
+            if row is None:
+                raise ValueError("user not found")
+
+            return row[0]
+
+def get_active_game(user_id: int) -> game.Game | None:
+    """Возвращает активную игру пользователя или None."""
+    with get_db() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT * FROM games
+                WHERE user_id = %s AND finished_at IS NULL
+                LIMIT 1
+                """,
+                (user_id,),
+            )
+            return dict_to_dataclass(cur.fetchone(), game.Game)
+
+def finish_game(game_id: int) -> game.Game | None:
+    """Завершает игру пользователя, сохраняя набранные очки."""
+    with get_db() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                UPDATE games
+                SET finished_at = NOW()
+                WHERE game_id = %s
+                RETURNING *
+                """,
+                (game_id,),
+            )
+            row = cur.fetchone()
+
+            return dict_to_dataclass(row, game.Game)
 
 
 
