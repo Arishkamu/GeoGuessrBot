@@ -113,6 +113,19 @@ def submit_guess( user_id: int, game_id: int, round_id: int, coordinates: models
     )
 
 
+def get_completed_round(user_id: int, game_id: int, round_id: int) -> models.Round:
+    """Завершённый раунд игрока: по нему можно прислать разбор."""
+    _get_user_game(user_id, game_id)
+
+    for r in db.get_rounds_by_game(game_id):
+        if r.round_id == round_id:
+            if not r.is_completed:
+                raise ValueError("round is not completed yet")
+            return r
+
+    raise ValueError("round not found")
+
+
 def get_game_result(user_id: int, game_id: int) -> tuple[models.Game, list[models.Round]]:
     game = _get_user_game(user_id, game_id)
 
