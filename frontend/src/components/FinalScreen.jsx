@@ -43,9 +43,6 @@ export default function FinalScreen({ total, history, onAgain }) {
       <div className="grow" />
       <div className="actions">
         <button className="btn" type="button" onClick={onAgain}>Сыграть ещё</button>
-        <button className="btn secondary" type="button" onClick={() => share(`Я набрала ${fmt(total)} очков в GeoGuessr. Сыграешь?`)}>
-          Поделиться
-        </button>
       </div>
     </div>
   )

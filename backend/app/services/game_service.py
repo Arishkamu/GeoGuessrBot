@@ -1,7 +1,7 @@
 from app.models import game as models
 from .scoring import evaluate_guess
 import app.database.db as db
-from app.services.panorama_service import generate_panorama
+from app.services.panorama_service import generate_picture
 
 
 ROUNDS_PER_GAME = 5
@@ -72,7 +72,7 @@ def next_round(user_id: int, game_id: int) -> models.Round:
             raise ValueError("location not found")
 
     # снимок и его настоящие координаты берём из Panoramax
-    result = generate_panorama(game.location_id)
+    result = generate_picture(game.location_id)
     if result is None:
         raise ValueError("no panorama found")
     panorama_id, correct_coordinates = result
@@ -113,6 +113,19 @@ def submit_guess( user_id: int, game_id: int, round_id: int, coordinates: models
     )
 
 
+def get_completed_round(user_id: int, game_id: int, round_id: int) -> models.Round:
+    """Завершённый раунд игрока: по нему можно прислать разбор."""
+    _get_user_game(user_id, game_id)
+
+    for r in db.get_rounds_by_game(game_id):
+        if r.round_id == round_id:
+            if not r.is_completed:
+                raise ValueError("round is not completed yet")
+            return r
+
+    raise ValueError("round not found")
+
+
 def get_game_result(user_id: int, game_id: int) -> tuple[models.Game, list[models.Round]]:
     game = _get_user_game(user_id, game_id)
 
@@ -138,3 +151,33 @@ def get_location_by_id(loc_id: int | None) -> models.Location | None:
     if loc_id is None:
         return None
     return db.get_location_by_id(location_id=loc_id)
+
+def get_user_total_score(user_id: int) -> int:
+    return db.get_user_total_score(user_id)
+
+
+def get_game_total_score(user_id: int, game_id: int) -> int:
+    return _get_user_game(user_id, game_id).total_score
+
+def finish_user_game(user_id: int, game_id: int) -> models.Game:
+    _get_user_game(user_id, game_id)
+
+    game = db.finish_game(game_id)
+    if game is None:
+        raise ValueError("game not found")
+
+    return game
+
+def get_game_state(user_id: int, game_id: int) -> tuple[models.Game, list[models.Round]]:
+    game = _get_user_game(user_id, game_id)
+    rounds = db.get_rounds_by_game(game_id)
+    return game, rounds
+
+
+def get_active_game_state(user_id: int) -> tuple[models.Game, list[models.Round]] | None:
+    game = db.get_active_game(user_id)
+
+    if game is None:
+        return None
+
+    return get_game_state(user_id, game.game_id)

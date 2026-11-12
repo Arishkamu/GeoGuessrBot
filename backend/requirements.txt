@@ -4,3 +4,9 @@ psycopg-pool>=3.2,<4
 python-dotenv==1.2.4
 fastapi
 pydantic
+uvicorn
+httpx
+anthropic
+reverse_geocoder
+shapely
+geopandas

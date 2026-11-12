@@ -134,7 +134,7 @@ def init_db() -> None:
                     east_lon     FLOAT NOT NULL,
                     north_lat    FLOAT NOT NULL
                 );
-                
+
                 CREATE TABLE IF NOT EXISTS users (
                     user_id      SERIAL PRIMARY KEY,
                     tg_id        BIGINT UNIQUE NOT NULL,
@@ -213,12 +213,24 @@ def create_game(user_id: int, location_id: int | None = None) -> game.Game | Non
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 """
-                INSERT INTO games (user_id, location_id) VALUES (%s, %s)
-                RETURNING *
+                SELECT * FROM games
+                WHERE user_id = %s AND finished_at IS NULL
+                LIMIT 1
                 """,
-                (user_id, location_id),
+                (user_id,),
             )
             row = cur.fetchone()
+
+            if row is None:
+                cur.execute(
+                    """
+                    INSERT INTO games (user_id, location_id) VALUES (%s, %s)
+                    RETURNING *
+                    """,
+                    (user_id, location_id),
+                )
+                row = cur.fetchone()
+
             return dict_to_dataclass(row, game.Game)
 
 def create_round(
@@ -253,12 +265,14 @@ def complete_round(
                 """
                 UPDATE rounds
                 SET guess_lat = %s, guess_lon = %s, distance_km = %s, points = %s
-                WHERE round_id = %s
+                WHERE round_id = %s AND guess_lat IS NULL
                 RETURNING *
                 """,
                 (guess.coordinates.latitude, guess.coordinates.longitude, guess.distance_km, guess.score, round_id),
             )
             round_row = cur.fetchone()
+            if round_row is None:
+                raise ValueError("round is already completed or does not exist")
             game_id = round_row['game_id']
             points = guess.score
 
@@ -274,6 +288,15 @@ def complete_round(
                 (points, game_id),
             )
             game_row = cur.fetchone()
+
+            cur.execute(
+                """
+                UPDATE users
+                SET total_score = total_score + %s
+                WHERE user_id = %s
+                """,
+                (points, game_row["user_id"]),
+            )
 
             # 3. Завершаем игру, если сыграно 5 раундов
             if game_row['rounds_total'] >= 5:
@@ -306,15 +329,6 @@ def get_game_by_id(game_id: int) -> game.Game | None:
             return dict_to_dataclass(cur.fetchone(), game.Game)
 
 
-
-
-
-
-
-
-
-
-
 def get_all_locations() -> list[game.Location]:
     """Возвращает список всех локаций"""
     with get_db() as conn:
@@ -345,3 +359,154 @@ def get_location_by_id(location_id: int) -> game.Location | None:
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute("SELECT * FROM locations WHERE location_id = %s", (location_id,))
             return row_to_location(cur.fetchone())
+
+
+def get_user_total_score(user_id: int) -> int:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT total_score FROM users WHERE user_id = %s",
+                (user_id,),
+            )
+            row = cur.fetchone()
+
+            if row is None:
+                raise ValueError("user not found")
+
+            return row[0]
+
+def get_active_game(user_id: int) -> game.Game | None:
+    """Возвращает активную игру пользователя или None."""
+    with get_db() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT * FROM games
+                WHERE user_id = %s AND finished_at IS NULL
+                LIMIT 1
+                """,
+                (user_id,),
+            )
+            return dict_to_dataclass(cur.fetchone(), game.Game)
+
+def finish_game(game_id: int) -> game.Game | None:
+    """Завершает игру пользователя, сохраняя набранные очки."""
+    with get_db() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                UPDATE games
+                SET finished_at = NOW()
+                WHERE game_id = %s
+                RETURNING *
+                """,
+                (game_id,),
+            )
+            row = cur.fetchone()
+
+            return dict_to_dataclass(row, game.Game)
+
+
+
+def seed_locations() -> None:
+    """Заполняет таблицу locations списком городов и регионов"""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO locations (name, west_lon, south_lat, east_lon, north_lat)
+                VALUES
+                ('Paris, France', 2.079135, 48.676938, 2.625265, 49.036262),
+                ('Lyon, France', 4.629670, 45.620270, 5.041730, 45.907730),
+                ('Nantes, France', -1.751989, 47.083653, -1.355211, 47.353147),
+                ('Strasbourg, France', 7.562027, 48.447636, 7.942173, 48.699164),
+                ('Bordeaux, France', -0.781892, 44.694070, -0.376508, 44.981530),
+                ('Le Havre, France', -0.058064, 49.386603, 0.273864, 49.602197),
+                ('Toulon, France', 5.780307, 43.016403, 6.075693, 43.231997),
+                ('Grenoble, France', 5.558801, 45.071720, 5.890199, 45.305280),
+                ('Dijon, France', 4.882478, 47.214203, 5.200522, 47.429797),
+                ('Tours, France', 0.525561, 47.286303, 0.844039, 47.501897),
+                ('Limoges, France', 1.119277, 45.734786, 1.402923, 45.932414),
+                ('Besancon, France', 5.878562, 47.138986, 6.169638, 47.336614),
+                ('Caen, France', -0.535617, 49.075103, -0.205783, 49.290697),
+                ('Brest, France', -4.648433, 48.282603, -4.323767, 48.498197),
+                ('Poitiers, France', 0.209706, 46.490369, 0.471094, 46.670031),
+                ('Bayonne, France', -1.598626, 43.403069, -1.350974, 43.582731),
+                ('Biarritz, France', -1.657645, 43.411335, -1.459555, 43.555065),
+                ('Mulhouse, France', 7.202294, 47.660969, 7.469506, 47.840631),
+                ('Saint-Malo, France', -2.134476, 48.577435, -1.916924, 48.721165),
+                ('Chartres, France', 1.367115, 48.366052, 1.610885, 48.527748),
+                ('Fontainebleau, France', 2.566285, 48.314869, 2.836915, 48.494531),
+                ('Nancy, France', 6.034705, 48.593286, 6.334095, 48.790914),
+                ('Epinal, France', 6.314693, 48.084569, 6.584107, 48.264231),
+                ('Belfort, France', 6.742814, 47.557152, 6.982786, 47.718848),
+                ('Chamonix, France', 6.753175, 45.842852, 6.985625, 46.004548),
+                ('Arles, France', 4.503595, 43.586769, 4.752005, 43.766431),
+                ('Montauban, France', 1.230083, 43.927769, 1.479917, 44.107431),
+                ('La Roche-sur-Yon, France', -1.557812, 46.580669, -1.295988, 46.760331),
+                ('Laval, France', -0.904433, 47.980169, -0.635567, 48.159831),
+                ('Saint-Nazaire, France', -2.359336, 47.174686, -2.068064, 47.372314),
+                ('Morlaix, France', -3.949799, 48.496552, -3.705401, 48.658248),
+                ('Beauvais, France', 1.956392, 49.348652, 2.205008, 49.510348),
+                ('Compiegne, France', 2.688012, 49.328069, 2.964188, 49.507731),
+                ('Laon, France', 3.495349, 49.483252, 3.744651, 49.644948),
+                ('Bourges, France', 2.266882, 46.991169, 2.530718, 47.170831),
+                ('Chateauroux, France', 1.558745, 46.721569, 1.821255, 46.901231),
+                ('Blois, France', 1.216033, 47.505252, 1.455767, 47.666948),
+                ('Amboise, France', 0.876502, 47.341135, 1.088898, 47.484865),
+                ('Bastia, France', 9.316449, 42.598486, 9.585351, 42.796114),
+                ('Calvi, France', 8.647324, 42.486852, 8.866876, 42.648548),
+                ('Saint-Denis (Reunion), France', 55.335024, -20.990097, 55.565776, -20.774503),
+                ('Saint-Pierre (Reunion), France', 55.362366, -21.449697, 55.593834, -21.234103),
+                ('Brussels, Belgium', 4.138273, 50.715553, 4.565127, 50.985047),
+                ('Ghent, Belgium', 3.545908, 50.946503, 3.888892, 51.162097),
+                ('Leuven, Belgium', 4.572363, 50.798952, 4.828637, 50.960648),
+                ('Mechelen, Belgium', 4.349059, 50.945052, 4.606141, 51.106748),
+                ('Amsterdam, Netherlands', 4.683418, 52.232853, 5.124782, 52.502347),
+                ('Leiden, Netherlands', 4.365209, 52.079252, 4.628791, 52.240948),
+                ('Mannheim, Germany', 8.313888, 49.388686, 8.618112, 49.586314),
+                ('Ulm, Germany', 9.852294, 48.311269, 10.122906, 48.490931),
+                ('Girona, Spain', 2.700559, 41.889569, 2.942241, 42.069231),
+                ('Modena, Italy', 10.798935, 44.557269, 11.051465, 44.736931),
+                ('Olomouc, Czechia', 17.112315, 49.503969, 17.389485, 49.683631),
+                ('Krakow, Poland', 19.735089, 49.929953, 20.154911, 50.199447),
+                ('Szczecin, Poland', 14.356802, 53.311720, 14.748798, 53.545280),
+                ('Uppsala, Sweden', 17.460002, 59.768769, 17.817798, 59.948431),
+                ('Trondheim, Norway', 10.154095, 63.322703, 10.636105, 63.538297),
+                ('Cork, Ireland', -8.650296, 51.790703, -8.300904, 52.006297),
+                ('Seattle, United States', -122.585250, 47.435521, -122.078950, 47.776879),
+                ('Portland Oregon, United States', -122.896337, 45.362487, -122.460463, 45.667913),
+                ('Toronto, Canada', -79.631513, 43.473538, -79.134887, 43.832862),
+                ('Rosario, Argentina', -60.811066, -33.078947, -60.489934, -32.809453),
+                ('Taipei, Taiwan', 121.377026, 24.862321, 121.753774, 25.203679),
+                ('Europe', -25, 34, 45, 71),
+                ('Asia', 25, -10, 180, 78),
+                ('Africa', -18, -35, 52, 38),
+                ('North America', -170, 7, -52, 84),
+                ('South America', -82, -56, -34, 13),
+                ('Oceania', 110, -50, 180, 0),
+                ('Western Europe', -10.0, 36.0, 16.0, 55.0),
+                ('Eastern Europe', 16.0, 44.0, 30.0, 55.0),
+                ('Northern Europe', 5.0, 55.0, 30.0, 70.0),
+                ('Southern Europe', 3.0, 36.0, 25.0, 44.0),
+                ('Central Europe', 2.0, 48.0, 16.0, 55.0),
+                ('British Isles', -10.0, 50.0, 2.0, 59.0),
+                ('Iberian Peninsula', -10.0, 36.0, 3.0, 44.0),
+                ('France', -5.0, 44.0, 5.0, 50.0),
+                ('Alps', 5.0, 44.0, 15.0, 48.0),
+                ('USA', -125.0, 30.0, -66.0, 49.0),
+                ('Germany', 5.8, 47.2, 15.0, 55.0),
+                ('Italy', 6.6, 35.4, 18.5, 46.1),
+                ('Spain', -7.3, 36.0, 3.3, 43.8),
+                ('United Kingdom', -6.0, 49.9, 1.7, 60.8),
+                ('Japan', 130.0, 24.0, 145.0, 42.5),
+                ('Brazil', -70.0, -33.7, -34.7, 0.2),
+                ('Russia', 29.6, 50.0, 140.0, 81.8),
+                ('Turkey', 26.5, 36.8, 44.8, 41.6),
+                ('Australia', 113.1, -43.7, 153.6, -10.6),
+                ('South Africa', 16.4, -34.8, 32.8, -22.1)
+                ON CONFLICT (name) DO UPDATE SET
+                  west_lon  = EXCLUDED.west_lon,
+                  south_lat = EXCLUDED.south_lat,
+                  east_lon  = EXCLUDED.east_lon,
+                  north_lat = EXCLUDED.north_lat;
+                """)

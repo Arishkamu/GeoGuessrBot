@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import * as api from '../api.js'
 import { haptic } from '../telegram.js'
 
@@ -16,26 +16,77 @@ export function useGame() {
   const [demo, setDemo] = useState(api.isDemo())
   const [demoReason, setDemoReason] = useState(api.getDemoReason())
   const [mapBig, setMapBig] = useState(false)
+  const [activeGame, setActiveGame] = useState(null)
+  const [checkingActive, setCheckingActive] = useState(!api.isDemo())
+  const [activeCheckError, setActiveCheckError] = useState(null)
+  const [review, setReview] = useState('idle')   // разбор раунда: idle | sending | sent | error
   const countriesRef = useRef([])           // выбранные страны; «Ещё раз» на финальном экране играет с тем же выбором
 
+  useEffect(() => {
+    if (api.isDemo()) return
+    let alive = true
+
+    api.getActiveGame()
+      .then((state) => { if (alive) setActiveGame(state) })
+      .catch(() => {
+        if (alive) setActiveCheckError('Не удалось проверить активную игру. Обнови страницу.')
+      })
+      .finally(() => { if (alive) setCheckingActive(false) })
+
+    return () => { alive = false }
+  }, [])
+
   const begin = useCallback((r) => {
-    setRound(r); setGuess(null); setLast(null); setMapBig(false); setError(null); setPhase('play')
+    setRound(r); setGuess(null); setLast(null); setMapBig(false); setError(null); setReview('idle'); setPhase('play')
   }, [])
 
   const start = useCallback(async (countries) => {
+    if (busy || checkingActive || activeCheckError) return
     // сюда может прийти событие клика (onClick={g.start}), поэтому берём только массив
     if (Array.isArray(countries)) countriesRef.current = countries
     setBusy(true); setError(null)
     try {
+      if (activeGame) {
+        const resumed = await api.resumeGame()
+        if (!resumed) {
+          setActiveGame(null)
+          setError('Предыдущая игра уже завершена. Можно начать новую.')
+          return
+        }
+
+        const { state, round: r } = resumed
+        begin(r)
+        setTotal(state.game_total)
+        setHistory(state.history.map((h) => ({ distance: h.distance_km, score: h.score })))
+
+        const lastAnswer = state.history.at(-1)
+        if (lastAnswer && r.round_no === state.rounds_completed) {
+          setLast({
+            distance_km: lastAnswer.distance_km,
+            score: lastAnswer.score,
+            total: state.game_total,
+            true: {
+              lat: lastAnswer.true_coordinates.latitude,
+              lon: lastAnswer.true_coordinates.longitude,
+            },
+            finished: state.is_finished,
+          })
+          setPhase('result')
+        }
+
+        setActiveGame(null)
+        return
+      }
+
       const { round: r, demo: isDemo, reason } = await api.startGame(countriesRef.current)
-      setDemo(isDemo); setDemoReason(reason || ''); setTotal(0); setHistory([])
+      setDemo(isDemo); setDemoReason(reason || ''); setTotal(r.total ?? 0); setHistory([])
       begin(r)
     } catch (e) {
       setError(e?.detail || 'Не получилось начать игру. Попробуй ещё раз.')
     } finally {
       setBusy(false)
     }
-  }, [begin])
+  }, [begin, busy, checkingActive, activeCheckError, activeGame])
 
   const pick = useCallback((ll) => {
     if (phase !== 'play') return
@@ -49,6 +100,12 @@ export function useGame() {
     try {
       const r = await api.sendGuess(round.token, guess)
       setLast(r); setTotal(r.total)
+      if (!api.isDemo()) {
+        setProfile({
+          total: r.user_total,
+          error: false,
+        })
+      }
       setHistory((h) => [...h, { distance: r.distance_km, score: r.score }])
       setPhase('result')
       haptic('medium')
@@ -76,7 +133,44 @@ export function useGame() {
     setPhase('final')
   }, [round])
 
+  const askReview = useCallback(async () => {
+    if (review === 'sending' || review === 'sent') return
+    setReview('sending')
+    try { await api.requestReview(); setReview('sent') } catch (e) { setReview('error') }
+  }, [review])
+
   const toggleMap = useCallback(() => setMapBig((b) => !b), [])
 
-  return { phase, round, guess, last, total, history, busy, error, demo, demoReason, mapBig, start, pick, submit, next, finish, toggleMap }
+  const [profile, setProfile] = useState({
+    total: null,
+    error: false,
+  })
+
+  useEffect(() => {
+    if (api.isDemo()) return
+
+    let alive = true
+
+    api.getProfile()
+      .then((user) => {
+        if (!alive) return
+
+        setProfile((previous) => previous.total === null
+          ? { total: user.total_score, error: false }
+          : previous)
+      })
+      .catch(() => {
+        if (!alive) return
+
+        setProfile((previous) => previous.total === null
+          ? { total: null, error: true }
+          : previous)
+      })
+
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  return { phase, round, guess, last, total, history, busy, error, demo, demoReason, mapBig, review, askReview, start, pick, submit, next, finish, toggleMap, profile, activeGame, checkingActive, activeCheckError }
 }

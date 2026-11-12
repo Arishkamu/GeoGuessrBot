@@ -3,6 +3,7 @@ import TopList from './TopList.jsx'
 import globe from '../assets/globe.webp'
 import { getCountries } from '../api.js'
 import { COUNTRIES } from '../countries.js'   // запасной список, если сервер не ответил
+import UserScore from './UserScore.jsx'
 
 const KEY = 'geoguessr.countries'
 
@@ -24,7 +25,7 @@ function save(list) {
   try { localStorage.setItem(KEY, JSON.stringify(list)) } catch { /* хранилище недоступно: не страшно */ }
 }
 
-export default function StartScreen({ busy, error, demo, demoReason, onPlay }) {
+export default function StartScreen({ busy, error, demo, demoReason, onPlay, profile, activeGame, checkingActive, activeCheckError }) {
   const [list, setList] = useState(COUNTRIES)        // пока грузится или при ошибке: запасной список
   const [picked, setPicked] = useState(loadSaved)    // одна выбранная страна; пусто = весь мир
 
@@ -52,6 +53,7 @@ export default function StartScreen({ busy, error, demo, demoReason, onPlay }) {
 
   return (
     <div className="screen" id="startScreen">
+      <UserScore profile={profile} demo={demo} />
       <h1>GeoGuessr</h1>
       <p className="lead">Фото со всего мира. Отметь на карте, где оно сделано. Чем ближе, тем больше очков. Играй, сколько хочешь.</p>
       <div className="globe-wrap"><img src={globe} alt="" width="840" height="769" decoding="async" /></div>
@@ -66,7 +68,13 @@ export default function StartScreen({ busy, error, demo, demoReason, onPlay }) {
       </div>
       <TopList id="startTop" limit={3} />
       <div className="actions">
-        <button className="btn" type="button" disabled={busy} onClick={() => onPlay(valid)}>{error || 'Играть'}</button>
+        {activeGame && (
+          <p>Пройдено {activeGame.rounds_completed} из {activeGame.rounds_total} раундов · {activeGame.game_total} очков</p>
+        )}
+        <button className="btn" type="button" disabled={busy || checkingActive || !!activeCheckError} onClick={() => onPlay(valid)}>
+          {checkingActive ? 'Проверяем игру…' : error || (activeGame ? 'Продолжить игру' : 'Играть')}
+        </button>
+        {activeCheckError && <p className="notice" role="alert">{activeCheckError}</p>}
       </div>
       {demo && <p className="notice">Сервер не отвечает, включён демо-режим с тестовыми картинками.{demoReason ? ` Причина: ${demoReason}.` : ''}</p>}
     </div>

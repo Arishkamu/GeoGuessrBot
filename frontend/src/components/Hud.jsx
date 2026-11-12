@@ -15,7 +15,7 @@ export default function Hud({ roundNo, roundsTotal, phase, total }) {
       </div>
       <div className="pill glass">
         <span className="num">{fmt(shown)}</span>
-        <small>очков</small>
+        <small>за игру</small>
       </div>
     </header>
   )
