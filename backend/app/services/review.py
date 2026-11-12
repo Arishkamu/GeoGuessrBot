@@ -6,6 +6,8 @@
 import base64
 import logging
 import os
+import threading
+import time
 
 import httpx
 
@@ -30,6 +32,19 @@ SYSTEM = (
 )
 
 _client = None
+_image_cache: dict[str, tuple[str, str]] = {}   # снимки, скачанные заранее, пока игрок смотрел на панораму
+
+
+def _warm_up() -> None:
+    """Первый вызов reverse_geocoder грузит базу городов несколько секунд: делаем это при старте."""
+    try:
+        import reverse_geocoder as rg
+        rg.search((0.0, 0.0), mode=1)
+    except Exception:
+        pass
+
+
+threading.Thread(target=_warm_up, daemon=True).start()
 
 
 def _anthropic():
@@ -67,6 +82,21 @@ def _download_image(url: str) -> tuple[str, str] | None:
         return None
 
 
+def prefetch_image(url: str) -> None:
+    """Скачивает снимок заранее (вызывается при выдаче раунда), чтобы разбор не ждал Panoramax."""
+    if url in _image_cache:
+        return
+    image = _download_image(url)
+    if image:
+        _image_cache[url] = image
+        while len(_image_cache) > 30:                 # не копим память
+            _image_cache.pop(next(iter(_image_cache)))
+
+
+def _get_image(url: str) -> tuple[str, str] | None:
+    return _image_cache.pop(url, None) or _download_image(url)
+
+
 def _ask_claude(image: tuple[str, str] | None, text: str) -> str:
     content = []
     if image:
@@ -86,12 +116,11 @@ def _ask_claude(image: tuple[str, str] | None, text: str) -> str:
     return answer
 
 
-def make_review(image_url, true_place, guess_place, distance_km, score) -> str:
+def make_review(image, true_place, guess_place, distance_km, score) -> str:
     facts = (
-        f"Настоящее место: {true_place}. Игрок поставил точку: {guess_place}. "
+        f"Настоящее место: {true_place}. Ты поставил точку: {guess_place}. "
         f"Ошибка: {distance_km:.0f} км. Очки: {score} из 5000."
     )
-    image = _download_image(image_url) if image_url else None
     if image:
         try:
             return _ask_claude(image, facts)                     # со снимком
@@ -115,6 +144,25 @@ def send_telegram(chat_id: int, text: str) -> None:
         log.warning("sendMessage %s: %s", r.status_code, r.text)
 
 
+def send_telegram_photo(chat_id: int, caption: str, image: tuple[str, str]) -> bool:
+    """Отправляет снимок раунда с подписью. Возвращает False, если не вышло (тогда шлём просто текст)."""
+    media_type, data = image
+    try:
+        r = httpx.post(
+            f"https://api.telegram.org/bot{os.environ['BOT_TOKEN']}/sendPhoto",
+            data={"chat_id": chat_id, "caption": caption[:1024]},     # лимит подписи 1024 символа
+            files={"photo": ("round.jpg", base64.b64decode(data), media_type)},
+            timeout=30,
+        )
+    except Exception:
+        log.warning("sendPhoto не прошёл", exc_info=True)
+        return False
+    if r.status_code != 200:
+        log.warning("sendPhoto %s: %s", r.status_code, r.text)
+        return False
+    return True
+
+
 def send_round_review(
     tg_id: int,
     image_url: str,
@@ -126,13 +174,24 @@ def send_round_review(
 ) -> None:
     """Собирает разбор раунда и отправляет его игроку. Ошибки только пишет в лог, игру не роняет."""
     try:
+        t0 = time.monotonic()
         true_place = _place(true_lat, true_lon)
         guess_place = _place(guess_lat, guess_lon)
+        t1 = time.monotonic()
+        image = _get_image(image_url) if image_url else None   # один раз: и для Claude, и для сообщения
+        t2 = time.monotonic()
         head = f"Раунд {round_number}: {score} очков, ошибка {distance_km:.0f} км.\n"
         if distance_km < CLOSE_ENOUGH_KM:
             body = f"Почти точно! Это {true_place}."        # ИИ не вызываем, экономим запрос
         else:
-            body = make_review(image_url, true_place, guess_place, distance_km, score)
-        send_telegram(tg_id, head + "\n" + body)
+            body = make_review(image, true_place, guess_place, distance_km, score)
+        t3 = time.monotonic()
+        text = head + "\n" + body
+        # снимок + разбор одним сообщением; если фото не отправилось, шлём только текст
+        if not (image and send_telegram_photo(tg_id, text, image)):
+            send_telegram(tg_id, text)
+        t4 = time.monotonic()
+        log.warning("разбор раунда за %.1f с: геокод %.1f, снимок %.1f, Claude %.1f, Telegram %.1f",
+                    t4 - t0, t1 - t0, t2 - t1, t3 - t2, t4 - t3)
     except Exception:
         log.exception("не удалось отправить разбор раунда")
