@@ -79,3 +79,13 @@ def finish_game(
     )
 
     return {}
+
+from app.services.panorama_service import generate_picture
+@router.get("/panoramax/nearby")
+def find_panoramax_photos():
+    try:
+        (panoram_id, _) = generate_picture()
+        return get_image_url(panoram_id)
+
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))

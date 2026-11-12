@@ -1,93 +1,97 @@
-import math
 import random
-
+import json
 import httpx
+from shapely.geometry import shape, Point
 
-import app.database.db as db
+from .game_service import *
 from app.models import game
+from app.models.router_models import PicType
 
 PANORAMAX_API = "https://api.panoramax.xyz/api/search"
 PANORAMAX_PICTURE = "https://api.panoramax.xyz/api/pictures/{id}/sd.jpg"
 
-# Panoramax покрывает мир неравномерно: случайная точка в океане или пустыне ничего не вернёт.
-# Поэтому случайные раунды берём вокруг городов, где снимков много. Список можно расширять.
-SEED_PLACES = [
-    (48.8566, 2.3522),     # Париж
-    (52.5200, 13.4050),    # Берлин
-    (41.9028, 12.4964),    # Рим
-    (40.4168, -3.7038),    # Мадрид
-    (51.5074, -0.1278),    # Лондон
-    (50.8503, 4.3517),     # Брюссель
-    (52.3676, 4.9041),     # Амстердам
-    (48.1351, 11.5820),    # Мюнхен
-    (48.1083, -4.3617),    # Бретань
-    (45.7640, 4.8357),     # Лион
-    (59.9139, 10.7522),    # Осло
-    (60.1699, 24.9384),    # Хельсинки
-]
+def _in_country(location_name: str | None, point: Point) -> bool:
+    if location_name is None or ',' in location_name:
+        return True
+
+    with open("countries.geojson", encoding="utf-8") as f:
+        countries = json.load(f)
+
+    country = next(
+        feature for feature in countries["features"]
+        if feature["properties"].get("name") == location_name
+    )
+    polygon = shape(country["geometry"])
+    return polygon.covers(point)
 
 
-def _random_bbox(radius_m: int) -> list[float]:
-    """Случайный квадрат вокруг случайного города в формате west, south, east, north."""
-    lat0, lon0 = random.choice(SEED_PLACES)
-    # сдвигаем центр до ~5 км, чтобы раунды в одном городе не повторялись
-    latitude = lat0 + random.uniform(-0.05, 0.05)
-    longitude = lon0 + random.uniform(-0.05, 0.05)
-
-    lat_delta = radius_m / 111_320
-    lon_delta = radius_m / (111_320 * math.cos(math.radians(latitude)))
-
+def _generate_random_bbox(bbox_radius_m: int) -> list[float]:
+    center = game.Coordinates(latitude=random.uniform(-80, 80), longitude = random.uniform(-180, 180))
     return [
-        longitude - lon_delta,
-        latitude - lat_delta,
-        longitude + lon_delta,
-        latitude + lat_delta,
+        center.longitude - bbox_radius_m,
+        center.latitude - bbox_radius_m,
+        center.longitude + bbox_radius_m,
+        center.latitude + bbox_radius_m,
     ]
 
 
-def _location_bbox(location_id: int) -> list[float]:
-    location = db.get_location_by_id(location_id)
-    if location is None:
-        raise ValueError("location not found")
-    # порядок для Panoramax: west, south, east, north
+def _location_bbox(location: game.Location) -> list[float]:
     return [location.west_lon, location.south_lat, location.east_lon, location.north_lat]
 
 
-def generate_panorama(
-    location_id: int | None = None,
-    radius_m: int = 3000,
-    max_attempts: int = 3,
-) -> tuple[str, game.Coordinates] | None:
-    """Возвращает (id снимка, его настоящие координаты) или None, если ничего не нашли."""
+def generate_picture(location_id: int | None = None, bbox_radius_m: int = 1000, max_attempts: int = 3, pic_type: PicType = PicType.PANO) -> tuple[str, game.Coordinates] | None:
+    if location_id is not None:
+        location = get_location_by_id(location_id)
+        if location is None:
+                return None
+        bbox =  _location_bbox(location)
+        return(_get_panorama(bbox, location_name=location.name), pic_type)
+
     for _ in range(max_attempts):
-        bbox = _location_bbox(location_id) if location_id is not None else _random_bbox(radius_m)
-        try:
-            result = _get_panorama(bbox)
-        except httpx.HTTPError:
-            continue
-        if result is not None:
-            return result
-        if location_id is not None:
-            break  # границы локации не меняются, повторять запрос бессмысленно
-    return None
+        bbox = _generate_random_bbox(bbox_radius_m)
+        pano = _get_panorama(bbox, pic_type=pic_type)
+        if pano is not None:
+            return pano
+
+    location = random.choice(get_locations())
+    bbox = _location_bbox(location)
+    return(_get_panorama(bbox, pic_type=pic_type))
 
 
-def _get_panorama(bbox: list[float], limit: int = 50) -> tuple[str, game.Coordinates] | None:
+def _get_panorama(bbox: list[float], limit: int = 50, location_name: str | None = None, pic_type: PicType = PicType.PANO) -> tuple[str, game.Coordinates] | None:
+    if (bbox is None):
+        return None
+
+    country_name = location_name and ',' in location_name if None else location_name
+    params = {
+        "bbox": ",".join(map(str, bbox)),
+        "limit": limit,
+    }
+    if pic_type == PicType.PANO:
+        params["pic_type"] = "equirectangular"
+    elif pic_type == PicType.PHOTO:
+        params["pic_type"] = "flat"
+    # If BOTH, don't add pic_type
+
     response = httpx.get(
         PANORAMAX_API,
-        params={"bbox": ",".join(map(str, bbox)), "limit": limit},
-        timeout=5,
+        params=params,
+        timeout=15,
     )
+
     response.raise_for_status()
     features = response.json().get("features", [])
-    random.shuffle(features)  # чтобы не выдавать каждый раз один и тот же снимок
+    random.shuffle(features)
 
     for feature in features:
         coordinates = (feature.get("geometry") or {}).get("coordinates")
         picture_id = feature.get("id")
         if not coordinates or not picture_id:
             continue
-        # GeoJSON хранит координаты как [долгота, широта]
+
+        if not _in_country(country_name, coordinates):
+            continue
+
         return picture_id, game.Coordinates(longitude=coordinates[0], latitude=coordinates[1])
 
     return None

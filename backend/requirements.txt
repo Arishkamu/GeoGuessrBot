@@ -6,3 +6,5 @@ fastapi
 pydantic
 uvicorn
 httpx
+shapely
+geopandas
