@@ -1,7 +1,7 @@
 import { forwardRef } from 'react'
 import { fmt, useAfterMount, useCountUp } from '../utils.js'
 
-function ResultPanel({ result, busy, error, onNext, onFinish }) {
+function ResultPanel({ result, busy, error, review, onReview, onNext, onFinish }) {
   const dist = useCountUp(result.distance_km, 1000, 0)
   const ready = useAfterMount()
   const width = ready ? Math.max(2, Math.min(100, result.score / 50)) : 0
@@ -19,6 +19,14 @@ function ResultPanel({ result, busy, error, onNext, onFinish }) {
       <button className="btn" type="button" disabled={busy} onClick={onNext}>
         {error || (result.finished ? 'Итоги' : 'Дальше')}
       </button>
+      {onReview && (
+        <button className="btn secondary small" type="button" disabled={review === 'sending' || review === 'sent'} onClick={onReview}>
+          {review === 'sent' ? 'Разбор отправлен в чат ✓'
+            : review === 'sending' ? 'Отправляю…'
+            : review === 'error' ? 'Не вышло, повторить'
+            : 'Прислать разбор в чат'}
+        </button>
+      )}
       {!result.finished && (
         <button className="btn secondary small" type="button" onClick={onFinish}>Завершить игру</button>
       )}
@@ -27,7 +35,7 @@ function ResultPanel({ result, busy, error, onNext, onFinish }) {
 }
 
 /* Нижняя панель: кнопка «Угадать» во время раунда, панель с результатом после ответа. */
-const Dock = forwardRef(function Dock({ phase, guess, last, busy, error, onSubmit, onNext, onFinish }, ref) {
+const Dock = forwardRef(function Dock({ phase, guess, last, busy, error, review, onReview, onSubmit, onNext, onFinish }, ref) {
   const isResult = phase === 'result' && last
   return (
     <footer className={`dock${isResult ? ' sheet' : ''}`} id="dock" ref={ref}>
@@ -36,7 +44,7 @@ const Dock = forwardRef(function Dock({ phase, guess, last, busy, error, onSubmi
           {busy ? 'Считаю…' : error || (guess ? 'Угадать' : 'Отметь точку на карте')}
         </button>
       )}
-      {isResult && <ResultPanel result={last} busy={busy} error={error} onNext={onNext} onFinish={onFinish} />}
+      {isResult && <ResultPanel result={last} busy={busy} error={error} review={review} onReview={onReview} onNext={onNext} onFinish={onFinish} />}
     </footer>
   )
 })

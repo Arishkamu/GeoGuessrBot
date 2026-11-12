@@ -1,10 +1,16 @@
-import random
 import json
+import logging
+import math
+import random
+from pathlib import Path
+
 import httpx
 from shapely.geometry import shape, Point
 
 from .game_service import *
 from app.models import game
+
+log = logging.getLogger(__name__)
 from app.models.router_models import PicType
 
 PANORAMAX_API = "https://api.panoramax.xyz/api/search"
@@ -83,6 +89,7 @@ def _get_panorama(bbox: list[float], limit: int = 50, location_name: str | None 
     features = response.json().get("features", [])
     random.shuffle(features)
 
+    found = []
     for feature in features:
         coordinates = (feature.get("geometry") or {}).get("coordinates")
         picture_id = feature.get("id")
@@ -94,7 +101,11 @@ def _get_panorama(bbox: list[float], limit: int = 50, location_name: str | None 
 
         return picture_id, game.Coordinates(longitude=coordinates[0], latitude=coordinates[1])
 
-    return None
+    if not found:
+        return None
+    _remember(found)   # пригодится, если Panoramax позже перестанет отвечать
+    picture_id, lat, lon = random.choice(found)  # чтобы не выдавать каждый раз один и тот же снимок
+    return picture_id, game.Coordinates(latitude=lat, longitude=lon)
 
 
 def get_image_url(panorama_id: str) -> str:
