@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from app.models.game import *
 from app.api.auth import get_user_by_tg_data
 from app.models.router_models import *
 from app.services.game_service import *
 from app.services.panorama_service import get_image_url
+from app.services.review import send_round_review
+
 
 router = APIRouter(prefix="/api", tags=["Game"])
 
@@ -37,11 +39,14 @@ def get_round(
         image_url=get_image_url(round_obj.panorama_id),
     )
 
+
 # POST /api/guess/{game_id}
+# После каждой догадки в фоне отправляем игроку разбор раунда сообщением в бота.
 @router.post("/guess/{game_id}")
 def make_guess(
     game_id: int,
     request: GuessRequest,
+    background: BackgroundTasks,
     current_user: User = Depends(get_user_by_tg_data),
 ):
     try:
@@ -49,13 +54,20 @@ def make_guess(
             user_id=current_user.user_id,
             game_id=game_id,
             round_id=request.round_id,
-            coordinates=Coordinates(
-                latitude=request.latitude,
-                longitude=request.longitude,
-            ),
+            coordinates=Coordinates(latitude=request.latitude, longitude=request.longitude),
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    background.add_task(
+        send_round_review,
+        current_user.tg_id,
+        get_image_url(round_obj.panorama_id),
+        round_obj.correct_coordinates.latitude, round_obj.correct_coordinates.longitude,
+        request.latitude, request.longitude,
+        round_obj.guess.distance_km, round_obj.guess.score,
+        round_obj.round_number,
+    )
 
     return GuessResponse(
         true_coordinates=CoordinatesResponse(
@@ -66,6 +78,7 @@ def make_guess(
         score=round_obj.guess.score,
         is_game_finished=game.is_finished,
     )
+
 
 # POST /api/game/finish
 @router.post("/game/finish")
