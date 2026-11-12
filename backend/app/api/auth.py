@@ -9,7 +9,9 @@ from dotenv import load_dotenv
 from fastapi import HTTPException, Header
 
 from app.services.game_service import get_or_create_user
+from app.services.location_service import get_country_location
 from app.models.game import User
+from app.models.router_models import StartRequest
 
 INIT_DATA_MAX_AGE = 24 * 3600
 
@@ -95,3 +97,12 @@ def validate_telegram_init_data(init_data: str) -> dict | None:
 
     except (ValueError, TypeError, json.JSONDecodeError):
         return None
+
+
+def get_location_id(body: StartRequest | None = None) -> int | None:
+    if not body or not body.country:
+        return None
+    try:
+        return get_country_location(body.country.strip().upper())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
