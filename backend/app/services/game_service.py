@@ -145,3 +145,26 @@ def get_user_total_score(user_id: int) -> int:
 
 def get_game_total_score(user_id: int, game_id: int) -> int:
     return _get_user_game(user_id, game_id).total_score
+
+def finish_user_game(user_id: int, game_id: int) -> models.Game:
+    _get_user_game(user_id, game_id)
+
+    game = db.finish_game(game_id)
+    if game is None:
+        raise ValueError("game not found")
+
+    return game
+
+def get_game_state(user_id: int, game_id: int) -> tuple[models.Game, list[models.Round]]:
+    game = _get_user_game(user_id, game_id)
+    rounds = db.get_rounds_by_game(game_id)
+    return game, rounds
+
+
+def get_active_game_state(user_id: int) -> tuple[models.Game, list[models.Round]] | None:
+    game = db.get_active_game(user_id)
+
+    if game is None:
+        return None
+
+    return get_game_state(user_id, game.game_id)

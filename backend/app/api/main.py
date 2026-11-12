@@ -19,10 +19,10 @@ ALLOWED_ORIGINS = [
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    db.connect_db()   
-    db.init_db()      
+    db.connect_db()
+    db.init_db()
     yield
-    db.close_db()    
+    db.close_db()
 
 
 app = FastAPI(title="Telegram Mini App API", lifespan=lifespan)

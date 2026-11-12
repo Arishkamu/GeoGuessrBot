@@ -84,7 +84,8 @@ export default function App() {
 
       {g.demo && g.phase !== 'start' && g.demoReason && <DemoBadge reason={g.demoReason} />}
       {g.phase === 'start' && (
-        <StartScreen busy={g.busy} error={g.error} demo={g.demo} demoReason={g.demoReason} profile={g.profile} onPlay={g.start}/>
+        <StartScreen busy={g.busy} error={g.error} demo={g.demo} demoReason={g.demoReason} profile={g.profile} onPlay={g.start}
+          activeGame={g.activeGame} checkingActive={g.checkingActive} activeCheckError={g.activeCheckError} />
       )}
       {g.phase === 'final' && (
         <FinalScreen total={g.total} profile={g.profile} demo={g.demo} history={g.history} onAgain={g.start} />

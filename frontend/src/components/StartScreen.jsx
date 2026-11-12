@@ -25,7 +25,7 @@ function save(list) {
   try { localStorage.setItem(KEY, JSON.stringify(list)) } catch { /* хранилище недоступно: не страшно */ }
 }
 
-export default function StartScreen({ busy, error, demo, demoReason, onPlay, profile }) {
+export default function StartScreen({ busy, error, demo, demoReason, onPlay, profile, activeGame, checkingActive, activeCheckError }) {
   const [list, setList] = useState(COUNTRIES)        // пока грузится или при ошибке: запасной список
   const [picked, setPicked] = useState(loadSaved)    // одна выбранная страна; пусто = весь мир
 
@@ -68,7 +68,13 @@ export default function StartScreen({ busy, error, demo, demoReason, onPlay, pro
       <UserScore profile={profile} demo={demo} />
       <TopList id="startTop" limit={3} />
       <div className="actions">
-        <button className="btn" type="button" disabled={busy} onClick={() => onPlay(valid)}>{error || 'Играть'}</button>
+        {activeGame && (
+          <p>Пройдено {activeGame.rounds_completed} из {activeGame.rounds_total} раундов · {activeGame.game_total} очков</p>
+        )}
+        <button className="btn" type="button" disabled={busy || checkingActive || !!activeCheckError} onClick={() => onPlay(valid)}>
+          {checkingActive ? 'Проверяем игру…' : error || (activeGame ? 'Продолжить игру' : 'Играть')}
+        </button>
+        {activeCheckError && <p className="notice" role="alert">{activeCheckError}</p>}
       </div>
       {demo && <p className="notice">Сервер не отвечает, включён демо-режим с тестовыми картинками.{demoReason ? ` Причина: ${demoReason}.` : ''}</p>}
     </div>

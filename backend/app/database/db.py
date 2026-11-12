@@ -213,12 +213,24 @@ def create_game(user_id: int, location_id: int | None = None) -> game.Game | Non
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute(
                 """
-                INSERT INTO games (user_id, location_id) VALUES (%s, %s)
-                RETURNING *
+                SELECT * FROM games
+                WHERE user_id = %s AND finished_at IS NULL
+                LIMIT 1
                 """,
-                (user_id, location_id),
+                (user_id,),
             )
             row = cur.fetchone()
+
+            if row is None:
+                cur.execute(
+                    """
+                    INSERT INTO games (user_id, location_id) VALUES (%s, %s)
+                    RETURNING *
+                    """,
+                    (user_id, location_id),
+                )
+                row = cur.fetchone()
+
             return dict_to_dataclass(row, game.Game)
 
 def create_round(
@@ -362,3 +374,34 @@ def get_user_total_score(user_id: int) -> int:
                 raise ValueError("user not found")
 
             return row[0]
+
+def get_active_game(user_id: int) -> game.Game | None:
+    """Возвращает активную игру пользователя или None."""
+    with get_db() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                SELECT * FROM games
+                WHERE user_id = %s AND finished_at IS NULL
+                LIMIT 1
+                """,
+                (user_id,),
+            )
+            return dict_to_dataclass(cur.fetchone(), game.Game)
+
+def finish_game(game_id: int) -> game.Game | None:
+    """Завершает игру пользователя, сохраняя набранные очки."""
+    with get_db() as conn:
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute(
+                """
+                UPDATE games
+                SET finished_at = NOW()
+                WHERE game_id = %s
+                RETURNING *
+                """,
+                (game_id,),
+            )
+            row = cur.fetchone()
+
+            return dict_to_dataclass(row, game.Game)

@@ -114,6 +114,20 @@ const asRound = (r) => ({
   kind: r.kind || 'pano'
 })
 
+export const getActiveGame = () => (demo
+  ? Promise.resolve(null)
+  : request('GET', '/api/game/active'))
+
+export async function resumeGame() {
+  const state = await getActiveGame()
+  if (!state) return null
+
+  live.gameId = state.game_id
+  const round = state.current_round ? asRound(state.current_round) : await liveRound()
+  live.roundId = Number(round.token)
+  return { state, round }
+}
+
 async function liveRound() {
   const r = await request('GET', `/api/round/${live.gameId}`)
   live.roundId = r.round_id

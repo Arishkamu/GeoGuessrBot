@@ -16,17 +16,67 @@ export function useGame() {
   const [demo, setDemo] = useState(api.isDemo())
   const [demoReason, setDemoReason] = useState(api.getDemoReason())
   const [mapBig, setMapBig] = useState(false)
+  const [activeGame, setActiveGame] = useState(null)
+  const [checkingActive, setCheckingActive] = useState(!api.isDemo())
+  const [activeCheckError, setActiveCheckError] = useState(null)
   const countriesRef = useRef([])           // выбранные страны; «Ещё раз» на финальном экране играет с тем же выбором
+
+  useEffect(() => {
+    if (api.isDemo()) return
+    let alive = true
+
+    api.getActiveGame()
+      .then((state) => { if (alive) setActiveGame(state) })
+      .catch(() => {
+        if (alive) setActiveCheckError('Не удалось проверить активную игру. Обнови страницу.')
+      })
+      .finally(() => { if (alive) setCheckingActive(false) })
+
+    return () => { alive = false }
+  }, [])
 
   const begin = useCallback((r) => {
     setRound(r); setGuess(null); setLast(null); setMapBig(false); setError(null); setPhase('play')
   }, [])
 
   const start = useCallback(async (countries) => {
+    if (busy || checkingActive || activeCheckError) return
     // сюда может прийти событие клика (onClick={g.start}), поэтому берём только массив
     if (Array.isArray(countries)) countriesRef.current = countries
     setBusy(true); setError(null)
     try {
+      if (activeGame) {
+        const resumed = await api.resumeGame()
+        if (!resumed) {
+          setActiveGame(null)
+          setError('Предыдущая игра уже завершена. Можно начать новую.')
+          return
+        }
+
+        const { state, round: r } = resumed
+        begin(r)
+        setTotal(state.game_total)
+        setHistory(state.history.map((h) => ({ distance: h.distance_km, score: h.score })))
+
+        const lastAnswer = state.history.at(-1)
+        if (lastAnswer && r.round_no === state.rounds_completed) {
+          setLast({
+            distance_km: lastAnswer.distance_km,
+            score: lastAnswer.score,
+            total: state.game_total,
+            true: {
+              lat: lastAnswer.true_coordinates.latitude,
+              lon: lastAnswer.true_coordinates.longitude,
+            },
+            finished: state.is_finished,
+          })
+          setPhase('result')
+        }
+
+        setActiveGame(null)
+        return
+      }
+
       const { round: r, demo: isDemo, reason } = await api.startGame(countriesRef.current)
       setDemo(isDemo); setDemoReason(reason || ''); setTotal(r.total ?? 0); setHistory([])
       begin(r)
@@ -35,7 +85,7 @@ export function useGame() {
     } finally {
       setBusy(false)
     }
-  }, [begin])
+  }, [begin, busy, checkingActive, activeCheckError, activeGame])
 
   const pick = useCallback((ll) => {
     if (phase !== 'play') return
@@ -115,5 +165,5 @@ export function useGame() {
     }
   }, [])
 
-  return { phase, round, guess, last, total, history, busy, error, demo, demoReason, mapBig, start, pick, submit, next, finish, toggleMap, profile }
+  return { phase, round, guess, last, total, history, busy, error, demo, demoReason, mapBig, start, pick, submit, next, finish, toggleMap, profile, activeGame, checkingActive, activeCheckError }
 }

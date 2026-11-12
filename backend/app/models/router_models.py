@@ -27,3 +27,12 @@ class GuessResponse(BaseModel):
 
 class UserScoreResponse(BaseModel):
     total_score: int
+
+class GameStateResponse(BaseModel):
+    game_id: int
+    is_finished: bool
+    game_total: int
+    rounds_completed: int
+    rounds_total: int
+    current_round: RoundResponse | None = None
+    history: list[GuessResponse]
