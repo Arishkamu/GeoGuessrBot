@@ -103,10 +103,15 @@ async function mockRequest(method, path, body) {
      POST /api/game/finish?game_id=
    Интерфейсу нужен другой вид (token, true, total), поэтому здесь они переводятся друг в друга.
    В демо-режиме ходим по старым путям: их знает mockRequest. */
-const live = { gameId: null, roundId: null, total: 0 }
+const live = { gameId: null, roundId: null}
 
 const asRound = (r) => ({
-  round_no: r.round_no, rounds_total: null, token: String(r.round_id), image_url: r.image_url, kind: r.kind || 'pano',
+  round_no: r.round_no,
+  rounds_total: r.rounds_total,
+  total: r.game_total,
+  token: String(r.round_id),
+  image_url: r.image_url,
+  kind: r.kind || 'pano'
 })
 
 async function liveRound() {
@@ -118,7 +123,6 @@ async function liveRound() {
 async function liveStart() {
   const g = await request('POST', '/api/game/start')
   live.gameId = g.game_id
-  live.total = 0
   return liveRound()
 }
 
@@ -149,12 +153,16 @@ export async function sendGuess(token, g) {
     console.warn('[geoguessr] догадка не принята:', e.status, e.detail, payload)
     throw e
   }
-  live.total += r.score
   return {
-    distance_km: r.distance_km, score: r.score, total: live.total,
-    true: { lat: r.true_coordinates.latitude, lon: r.true_coordinates.longitude },
-    author: '', license: '', source_url: '', finished: !!r.is_game_finished,
-  }
+  distance_km: r.distance_km, score: r.score,
+  total: r.game_total, user_total: r.user_total,
+  true: {
+    lat: r.true_coordinates.latitude,
+    lon: r.true_coordinates.longitude,
+  },
+  author: '', license: '',
+  source_url: '', finished: !!r.is_game_finished,
+}
 }
 
 export const finishGame = () => (demo
@@ -162,3 +170,5 @@ export const finishGame = () => (demo
   : request('POST', `/api/game/finish?game_id=${live.gameId}`))
 export const getCountries = () => request('GET', '/api/countries')
 export const getTop = () => request('GET', '/api/top')
+
+export const getProfile = () => request('GET', '/api/me')

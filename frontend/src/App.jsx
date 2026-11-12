@@ -83,8 +83,12 @@ export default function App() {
       </div>
 
       {g.demo && g.phase !== 'start' && g.demoReason && <DemoBadge reason={g.demoReason} />}
-      {g.phase === 'start' && <StartScreen busy={g.busy} error={g.error} demo={g.demo} demoReason={g.demoReason} onPlay={g.start} />}
-      {g.phase === 'final' && <FinalScreen total={g.total} history={g.history} onAgain={g.start} />}
+      {g.phase === 'start' && (
+        <StartScreen busy={g.busy} error={g.error} demo={g.demo} demoReason={g.demoReason} profile={g.profile} onPlay={g.start}/>
+      )}
+      {g.phase === 'final' && (
+        <FinalScreen total={g.total} profile={g.profile} demo={g.demo} history={g.history} onAgain={g.start} />
+      )}
 
       {viewer && g.round && !isPano && (
         <div id="viewer">

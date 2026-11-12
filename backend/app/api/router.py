@@ -34,6 +34,8 @@ def get_round(
     return RoundResponse(
         round_id=round_obj.round_id,
         round_no=round_obj.round_number,
+        rounds_total=ROUNDS_PER_GAME,
+        game_total=get_game_total_score(user_id, game_id),
         image_url=get_image_url(round_obj.panorama_id),
     )
 
@@ -64,6 +66,8 @@ def make_guess(
         ),
         distance_km=round_obj.guess.distance_km,
         score=round_obj.guess.score,
+        game_total=game.total_score,
+        user_total=get_user_total_score(current_user.user_id),
         is_game_finished=game.is_finished,
     )
 
@@ -79,3 +83,9 @@ def finish_game(
     )
 
     return {}
+
+@router.get("/me", response_model=UserScoreResponse)
+def get_me(current_user: User = Depends(get_user_by_tg_data)):
+    return UserScoreResponse(
+        total_score=current_user.total_score,
+    )

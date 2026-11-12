@@ -1,10 +1,11 @@
 import { share } from '../telegram.js'
 import { fmt, plural, useAfterMount, useCountUp } from '../utils.js'
 import TopList from './TopList.jsx'
+import UserScore from './UserScore.jsx'
 
 const C = 2 * Math.PI * 52
 
-export default function FinalScreen({ total, history, onAgain }) {
+export default function FinalScreen({ total, profile, demo, history, onAgain }) {
   const n = history.length || 1
   const avg = total / n
   const share01 = Math.min(1, avg / 5000)
@@ -30,6 +31,7 @@ export default function FinalScreen({ total, history, onAgain }) {
         </div>
       </div>
       <div className="verdict">{verdict}</div>
+      <UserScore profile={profile} demo={demo} />
       <ul className="list num">
         {history.map((h, i) => (
           <li key={i}>
@@ -43,9 +45,6 @@ export default function FinalScreen({ total, history, onAgain }) {
       <div className="grow" />
       <div className="actions">
         <button className="btn" type="button" onClick={onAgain}>Сыграть ещё</button>
-        <button className="btn secondary" type="button" onClick={() => share(`Я набрала ${fmt(total)} очков в GeoGuessr. Сыграешь?`)}>
-          Поделиться
-        </button>
       </div>
     </div>
   )

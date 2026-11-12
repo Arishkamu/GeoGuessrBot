@@ -138,3 +138,10 @@ def get_location_by_id(loc_id: int | None) -> models.Location | None:
     if loc_id is None:
         return None
     return db.get_location_by_id(location_id=loc_id)
+
+def get_user_total_score(user_id: int) -> int:
+    return db.get_user_total_score(user_id)
+
+
+def get_game_total_score(user_id: int, game_id: int) -> int:
+    return _get_user_game(user_id, game_id).total_score

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import * as api from '../api.js'
 import { haptic } from '../telegram.js'
 
@@ -28,7 +28,7 @@ export function useGame() {
     setBusy(true); setError(null)
     try {
       const { round: r, demo: isDemo, reason } = await api.startGame(countriesRef.current)
-      setDemo(isDemo); setDemoReason(reason || ''); setTotal(0); setHistory([])
+      setDemo(isDemo); setDemoReason(reason || ''); setTotal(r.total ?? 0); setHistory([])
       begin(r)
     } catch (e) {
       setError(e?.detail || 'Не получилось начать игру. Попробуй ещё раз.')
@@ -49,6 +49,12 @@ export function useGame() {
     try {
       const r = await api.sendGuess(round.token, guess)
       setLast(r); setTotal(r.total)
+      if (!api.isDemo()) {
+        setProfile({
+          total: r.user_total,
+          error: false,
+        })
+      }
       setHistory((h) => [...h, { distance: r.distance_km, score: r.score }])
       setPhase('result')
       haptic('medium')
@@ -78,5 +84,36 @@ export function useGame() {
 
   const toggleMap = useCallback(() => setMapBig((b) => !b), [])
 
-  return { phase, round, guess, last, total, history, busy, error, demo, demoReason, mapBig, start, pick, submit, next, finish, toggleMap }
+  const [profile, setProfile] = useState({
+    total: null,
+    error: false,
+  })
+
+  useEffect(() => {
+    if (api.isDemo()) return
+
+    let alive = true
+
+    api.getProfile()
+      .then((user) => {
+        if (!alive) return
+
+        setProfile((previous) => previous.total === null
+          ? { total: user.total_score, error: false }
+          : previous)
+      })
+      .catch(() => {
+        if (!alive) return
+
+        setProfile((previous) => previous.total === null
+          ? { total: null, error: true }
+          : previous)
+      })
+
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  return { phase, round, guess, last, total, history, busy, error, demo, demoReason, mapBig, start, pick, submit, next, finish, toggleMap, profile }
 }

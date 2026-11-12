@@ -3,6 +3,7 @@ import TopList from './TopList.jsx'
 import globe from '../assets/globe.webp'
 import { getCountries } from '../api.js'
 import { COUNTRIES } from '../countries.js'   // запасной список, если сервер не ответил
+import UserScore from './UserScore.jsx'
 
 const KEY = 'geoguessr.countries'
 
@@ -24,7 +25,7 @@ function save(list) {
   try { localStorage.setItem(KEY, JSON.stringify(list)) } catch { /* хранилище недоступно: не страшно */ }
 }
 
-export default function StartScreen({ busy, error, demo, demoReason, onPlay }) {
+export default function StartScreen({ busy, error, demo, demoReason, onPlay, profile }) {
   const [list, setList] = useState(COUNTRIES)        // пока грузится или при ошибке: запасной список
   const [picked, setPicked] = useState(loadSaved)    // одна выбранная страна; пусто = весь мир
 
@@ -64,6 +65,7 @@ export default function StartScreen({ busy, error, demo, demoReason, onPlay }) {
           </button>
         ))}
       </div>
+      <UserScore profile={profile} demo={demo} />
       <TopList id="startTop" limit={3} />
       <div className="actions">
         <button className="btn" type="button" disabled={busy} onClick={() => onPlay(valid)}>{error || 'Играть'}</button>
