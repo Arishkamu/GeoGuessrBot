@@ -27,6 +27,8 @@ export default function App() {
     if (g.phase === 'result' && dockRef.current) setSheetHeight(dockRef.current.offsetHeight)
   }, [g.phase, g.last])
 
+  // номер раунда считаем по числу сделанных догадок: не зависит от того, что вернул сервер
+  const roundNo = Math.max(1, g.phase === 'play' || g.phase === 'start' ? g.history.length + 1 : g.history.length)
   const isPano = g.round?.kind === 'pano'
   const inGame = g.phase === 'play' || g.phase === 'result'
   const mapPhase = g.phase === 'result' ? 'result' : 'play'
@@ -38,7 +40,7 @@ export default function App() {
           ? <Pano key={g.round.token} url={g.round.image_url} />
           : <Photo key={g.round.image_url} url={g.round.image_url} onOpen={() => setViewer(true)} />)}
 
-        <Hud roundNo={g.round?.round_no ?? 1} roundsTotal={g.round?.rounds_total ?? null} phase={g.phase} total={g.total} />
+        <Hud roundNo={roundNo} roundsTotal={g.round?.rounds_total ?? null} phase={g.phase} total={g.total} />
 
         {isPano ? (
           <div className="chip glass zoom pano-hint">
@@ -75,6 +77,8 @@ export default function App() {
             last={g.last}
             busy={g.busy}
             error={g.error}
+            review={g.review}
+            onReview={g.demo ? null : g.askReview}
             onSubmit={g.submit}
             onNext={g.next}
             onFinish={g.finish}
@@ -88,7 +92,7 @@ export default function App() {
           activeGame={g.activeGame} checkingActive={g.checkingActive} activeCheckError={g.activeCheckError} />
       )}
       {g.phase === 'final' && (
-        <FinalScreen total={g.total} history={g.history} onAgain={g.start} />
+        <FinalScreen total={g.total} history={g.history} review={g.review} onReview={g.demo || !g.last ? null : g.askReview} onAgain={g.start} />
       )}
 
       {viewer && g.round && !isPano && (

@@ -17,7 +17,7 @@ export const getDemoReason = () => demoReason
 
 /* Короткое объяснение ошибки для экрана: «401: неверная подпись», «таймаут», «нет связи». */
 function reasonOf(e) {
-  if (e?.name === 'AbortError') return 'сервер не ответил за 8 секунд'
+  if (e?.name === 'AbortError') return 'сервер не ответил за 30 секунд'
   if (e?.status) return e.detail ? `${e.status}: ${e.detail}` : String(e.status)
   return 'нет связи с сервером'
 }
@@ -31,9 +31,9 @@ export function haversine(la1, lo1, la2, lo2) {
 
 async function request(method, path, body) {
   if (demo) return mockRequest(method, path, body)
-  // если сервер молчит дольше 8 секунд, считаем его недоступным (иначе кнопка зависнет навсегда)
+  // если сервер молчит дольше 30 секунд, считаем его недоступным (иначе кнопка зависнет навсегда)
   const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), 8000)
+  const timer = setTimeout(() => ctrl.abort(), 30000)
   try {
     const res = await fetch(path, {
       method,
@@ -85,7 +85,7 @@ async function mockRequest(method, path, body) {
   if (path === '/api/guess') {
     const p = place()
     const d = haversine(body.lat, body.lon, p.lat, p.lon)
-    const score = Math.round(5000 * Math.exp(-d / 1500))
+    const score = Math.round(5000 * Math.exp(-d / 1775))   // как в backend scoring.py (масштаб 1775 км); нужно только демо-режиму
     mock.total += score; mock.n += 1
     return { distance_km: d, score, total: mock.total, true: { lat: p.lat, lon: p.lon }, author: 'Демо', license: 'CC0', source_url: '', finished: false }
   }
@@ -103,7 +103,7 @@ async function mockRequest(method, path, body) {
      POST /api/game/finish?game_id=
    Интерфейсу нужен другой вид (token, true, total), поэтому здесь они переводятся друг в друга.
    В демо-режиме ходим по старым путям: их знает mockRequest. */
-const live = { gameId: null, roundId: null}
+const live = { gameId: null, roundId: null, guess: null }
 
 const asRound = (r) => ({
   round_no: r.round_no,
@@ -167,16 +167,25 @@ export async function sendGuess(token, g) {
     console.warn('[geoguessr] догадка не принята:', e.status, e.detail, payload)
     throw e
   }
+  live.guess = { lat: g.lat, lon: g.lon }   // нужна, чтобы потом запросить разбор раунда
   return {
   distance_km: r.distance_km, score: r.score,
-  total: r.game_total, user_total: r.user_total,
-  true: {
-    lat: r.true_coordinates.latitude,
-    lon: r.true_coordinates.longitude,
-  },
-  author: '', license: '',
-  source_url: '', finished: !!r.is_game_finished,
+    total: r.game_total, user_total: r.user_total,
+    true: {
+      lat: r.true_coordinates.latitude,
+      lon: r.true_coordinates.longitude,
+    },
+    author: '', license: '',
+    source_url: '', finished: !!r.is_game_finished,
+  }
 }
+
+/* Разбор раунда: сервер в фоне спросит Claude и пришлёт ответ сообщением от бота. Запрос возвращается сразу. */
+export async function requestReview() {
+  if (demo) return { status: 'sent' }
+  return request('POST', `/api/review/${live.gameId}`, {
+    round_id: Number(live.roundId),
+  })
 }
 
 export const finishGame = () => (demo

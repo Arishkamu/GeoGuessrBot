@@ -19,6 +19,7 @@ export function useGame() {
   const [activeGame, setActiveGame] = useState(null)
   const [checkingActive, setCheckingActive] = useState(!api.isDemo())
   const [activeCheckError, setActiveCheckError] = useState(null)
+  const [review, setReview] = useState('idle')   // разбор раунда: idle | sending | sent | error
   const countriesRef = useRef([])           // выбранные страны; «Ещё раз» на финальном экране играет с тем же выбором
 
   useEffect(() => {
@@ -36,7 +37,7 @@ export function useGame() {
   }, [])
 
   const begin = useCallback((r) => {
-    setRound(r); setGuess(null); setLast(null); setMapBig(false); setError(null); setPhase('play')
+    setRound(r); setGuess(null); setLast(null); setMapBig(false); setError(null); setReview('idle'); setPhase('play')
   }, [])
 
   const start = useCallback(async (countries) => {
@@ -132,6 +133,12 @@ export function useGame() {
     setPhase('final')
   }, [round])
 
+  const askReview = useCallback(async () => {
+    if (review === 'sending' || review === 'sent') return
+    setReview('sending')
+    try { await api.requestReview(); setReview('sent') } catch (e) { setReview('error') }
+  }, [review])
+
   const toggleMap = useCallback(() => setMapBig((b) => !b), [])
 
   const [profile, setProfile] = useState({
@@ -165,5 +172,5 @@ export function useGame() {
     }
   }, [])
 
-  return { phase, round, guess, last, total, history, busy, error, demo, demoReason, mapBig, start, pick, submit, next, finish, toggleMap, profile, activeGame, checkingActive, activeCheckError }
+  return { phase, round, guess, last, total, history, busy, error, demo, demoReason, mapBig, review, askReview, start, pick, submit, next, finish, toggleMap, profile, activeGame, checkingActive, activeCheckError }
 }

@@ -6,3 +6,7 @@ fastapi
 pydantic
 uvicorn
 httpx
+anthropic
+reverse_geocoder
+shapely
+geopandas
