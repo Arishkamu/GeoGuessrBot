@@ -10,10 +10,6 @@ from app.api.auth import get_user_by_tg_data
 from app.database import db
 from app.models.game import Coordinates
 
-# ==========================================
-# 1. ФИКСТУРЫ (Подготовка окружения)
-# ==========================================
-
 @pytest.fixture(scope="module")
 def client():
     with TestClient(app) as c:
@@ -35,11 +31,6 @@ def clean_db():
     db.reset_db()
     db.init_db()
     yield
-
-
-# ==========================================
-# 2. ТЕСТЫ
-# ==========================================
 
 def test_start_game_and_check_db(client):
     """Проверяет, что POST /api/game/start создает игру в БД"""
