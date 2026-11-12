@@ -134,15 +134,15 @@ async function liveRound() {
   return asRound(r)
 }
 
-async function liveStart() {
-  const g = await request('POST', '/api/game/start')
+async function liveStart(body) {
+  const g = await request('POST', '/api/game/start', body)
   live.gameId = g.game_id
   return liveRound()
 }
 
 export async function startGame(countries = []) {
-  const body = countries.length ? { countries } : undefined   // сервер пока не использует, ручка start ждёт без тела
-  const run = () => (demo ? request('POST', '/api/game/start', body) : liveStart())
+  const body = countries.length ? { country: countries[0] } : undefined   // сервер пока не использует, ручка start ждёт без тела
+  const run = () => (demo ? request('POST', '/api/game/start', body) : liveStart(body))
   try {
     return { round: await run(), demo, reason: demoReason }
   } catch (e) {

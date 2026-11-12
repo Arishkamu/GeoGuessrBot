@@ -1,35 +1,32 @@
-import json
 import logging
-import math
 import random
-from pathlib import Path
 
 import httpx
 from shapely.geometry import shape, Point
 
-import app.database.db as db
 from app.models import game
-from app.services.game_service import get_locations
 
 log = logging.getLogger(__name__)
 from app.models.router_models import PicType
+import app.database.db as db
 
 PANORAMAX_API = "https://api.panoramax.xyz/api/search"
 PANORAMAX_PICTURE = "https://api.panoramax.xyz/api/pictures/{id}/sd.jpg"
 
 def _in_country(location_name: str | None, point: Point) -> bool:
-    if location_name is None or ',' in location_name:
-        return True
+    # if location_name is None or ',' in location_name:
+    #     return True
 
-    with open("countries.geojson", encoding="utf-8") as f:
-        countries = json.load(f)
+    # with open("countries.geojson", encoding="utf-8") as f:
+    #     countries = json.load(f)
 
-    country = next(
-        feature for feature in countries["features"]
-        if feature["properties"].get("name") == location_name
-    )
-    polygon = shape(country["geometry"])
-    return polygon.covers(point)
+    # country = next(
+    #     feature for feature in countries["features"]
+    #     if feature["properties"].get("name") == location_name
+    # )
+    # polygon = shape(country["geometry"])
+    # return polygon.covers(point)
+    return True
 
 
 def _generate_random_bbox(bbox_radius_m: int) -> list[float]:
@@ -52,7 +49,7 @@ def generate_picture(location_id: int | None = None, bbox_radius_m: int = 1000, 
         if location is None:
                 return None
         bbox =  _location_bbox(location)
-        return _get_panorama(bbox, location_name=location.name, pic_type=pic_type)
+        return (_get_panorama(bbox, location_name=location.name, pic_type=pic_type))
 
     for _ in range(max_attempts):
         bbox = _generate_random_bbox(bbox_radius_m)
@@ -60,7 +57,7 @@ def generate_picture(location_id: int | None = None, bbox_radius_m: int = 1000, 
         if pano is not None:
             return pano
 
-    location = random.choice(get_locations())
+    location = random.choice(db.get_all_locations())
     bbox = _location_bbox(location)
     return(_get_panorama(bbox, pic_type=pic_type))
 
@@ -90,7 +87,6 @@ def _get_panorama(bbox: list[float], limit: int = 50, location_name: str | None 
     features = response.json().get("features", [])
     random.shuffle(features)
 
-    found = []
     for feature in features:
         coordinates = (feature.get("geometry") or {}).get("coordinates")
         picture_id = feature.get("id")
@@ -102,12 +98,7 @@ def _get_panorama(bbox: list[float], limit: int = 50, location_name: str | None 
 
         return picture_id, game.Coordinates(longitude=coordinates[0], latitude=coordinates[1])
 
-    if not found:
-        return None
-    _remember(found)   # пригодится, если Panoramax позже перестанет отвечать
-    picture_id, lat, lon = random.choice(found)  # чтобы не выдавать каждый раз один и тот же снимок
-    return picture_id, game.Coordinates(latitude=lat, longitude=lon)
-
+    return None
 
 def get_image_url(panorama_id: str) -> str:
     return PANORAMAX_PICTURE.format(id=panorama_id)
