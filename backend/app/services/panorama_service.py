@@ -90,6 +90,9 @@ def _get_panorama(bbox: list[float], limit: int = 50, location_name: str | None 
     for feature in features:
         coordinates = (feature.get("geometry") or {}).get("coordinates")
         picture_id = feature.get("id")
+        if feature.get("properties", {}).get("exif", {}).get("Xmp.GPano.ProjectionType") != "equirectangular":
+            continue
+        
         if not coordinates or not picture_id:
             continue
 
