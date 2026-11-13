@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // Адрес бэкенда: в Docker его задаёт compose (http://backend:8080), локально это localhost:8080.
-const apiTarget = process.env.API_PROXY_TARGET || 'http://localhost:8080'
+const apiTarget = process.env.API_URL || 'http://localhost:8080'
 const proxy = { '/api': apiTarget, '/photos': apiTarget }
 
 // allowedHosts: true нужен, чтобы Vite пускал запросы с адресов туннеля (trycloudflare.com, ngrok).

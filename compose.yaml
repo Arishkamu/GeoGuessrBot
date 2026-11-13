@@ -48,7 +48,7 @@ services:
     env_file:
       - .env
     environment:
-      API_PROXY_TARGET: http://backend:8080
+      API_URL: http://backend:8080
     ports:
       - "8000:8000"
     depends_on:
