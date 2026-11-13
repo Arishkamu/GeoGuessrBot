@@ -1,10 +1,4 @@
 """Telegram-бот для мини-аппа «GeoGuessr».
-
-Бот делает три вещи:
-  1. открывает мини-апп кнопкой «Играть» (/start, /play);
-  2. показывает рейтинг (/top), запрашивая его у сервера;
-  3. при запуске сам настраивает профиль бота: команды, тексты, кнопку меню.
-
 Запуск:
     pip install aiogram python-dotenv
     export BOT_TOKEN=...                       # токен от @BotFather
@@ -44,17 +38,16 @@ APP_LINK = os.environ.get("APP_LINK", "")
 
 ABOUT = "Угадай, где сделано фото: отметь точку на карте и набери очки. Играй без ограничений, есть рейтинг."
 DESCRIPTION = (
-    "Где это? — игра-угадайка для Telegram. Я показываю фото улицы или достопримечательности, "
+    "GeoGuessr — игра-угадайка для Telegram. Я показываю фото улицы или достопримечательности, "
     "а ты отмечаешь на карте, где оно сделано. Чем ближе твоя точка, тем больше очков: "
     "до 5 000 за раунд.\n\n"
     "• сколько угодно раундов с фото со всего мира\n"
     "• карта прямо в Telegram\n"
-    "• рейтинг лучших игроков\n"
+    "• разборы после каждого раунда\n"
     "Нажми «Играть» и проверь, насколько хорошо ты знаешь мир."
 )
 COMMANDS = [
     BotCommand(command="play", description="Начать игру"),
-    BotCommand(command="top", description="Лучшие игроки"),
     BotCommand(command="help", description="Как играть"),
 ]
 HELP_TEXT = (
@@ -62,8 +55,8 @@ HELP_TEXT = (
     "1. Нажми «Играть» и посмотри на фото.\n"
     "2. Отметь на карте, где оно сделано.\n"
     "3. Получи очки: чем ближе, тем больше. Максимум 5 000 за раунд.\n"
-    "4. Играй, сколько хочешь, а когда надоест, нажми «Завершить игру» и посмотри итог.\n\n"
-    "Лучшие игры попадают в рейтинг: /top"
+    "4. Нажми «Прислать разбор в чат» и посмотри разбор по раунду.\n"
+    "5. Играй, сколько хочешь, а когда надоест, нажми «Завершить игру» и посмотри итог.\n\n"
 )
 
 dp = Dispatcher()
@@ -71,8 +64,6 @@ dp = Dispatcher()
 
 # ---------- чистые функции (их удобно проверять без Telegram) ----------
 def build_play_markup(chat_type: str) -> InlineKeyboardMarkup | None:
-    """В личке кнопка открывает мини-апп напрямую. В группах web_app-кнопки Telegram
-    не разрешает, поэтому нужна обычная ссылка на мини-апп (APP_LINK)."""
     if chat_type == "private":
         button = InlineKeyboardButton(text="Играть", web_app=WebAppInfo(url=WEBAPP_URL))
     elif APP_LINK:
@@ -80,30 +71,6 @@ def build_play_markup(chat_type: str) -> InlineKeyboardMarkup | None:
     else:
         return None
     return InlineKeyboardMarkup(inline_keyboard=[[button]])
-
-
-def format_top(rows: list[dict]) -> str:
-    if not rows:
-        return "Пока никто не доиграл до конца. Будь первым: /play"
-    medals = ["🥇", "🥈", "🥉"]
-    lines = []
-    for i, row in enumerate(rows[:10]):
-        mark = medals[i] if i < 3 else f"{i + 1}."
-        lines.append(f"{mark} {row['name']}: {int(row['best']):,}".replace(",", " "))
-    return "Лучшие игры:\n" + "\n".join(lines)
-
-
-async def fetch_top() -> list[dict] | None:
-    """Рейтинг берём у сервера. None, если сервер недоступен."""
-    try:
-        timeout = aiohttp.ClientTimeout(total=8)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(f"{API_URL}/api/top") as resp:
-                resp.raise_for_status()
-                return await resp.json()
-    except Exception:
-        logging.exception("не удалось получить /api/top")
-        return None
 
 
 # ---------- команды ----------
@@ -132,15 +99,6 @@ async def cmd_play(message: Message):
     await send_play(message)
 
 
-@dp.message(Command("top"))
-async def cmd_top(message: Message):
-    rows = await fetch_top()
-    if rows is None:
-        await message.answer("Не получилось загрузить рейтинг. Попробуй чуть позже.")
-        return
-    await message.answer(format_top(rows))
-
-
 @dp.message(Command("help"))
 async def cmd_help(message: Message):
     await message.answer(HELP_TEXT)
@@ -149,7 +107,7 @@ async def cmd_help(message: Message):
 @dp.message(F.text & ~F.text.startswith("/"))
 async def any_text(message: Message):
     if message.chat.type == "private":
-        await message.answer("Я умею только играть в «Где это?». Нажми /play, чтобы начать.")
+        await message.answer("Я умею только играть в GeoGuessr. Нажми /play, чтобы начать.")
 
 
 # ---------- настройка профиля бота при запуске ----------
